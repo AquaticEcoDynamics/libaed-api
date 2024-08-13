@@ -89,64 +89,64 @@ MODULE aed_api
 
    !#===========================================================#!
    TYPE api_env_t
-      AED_REAL,DIMENSION(:,:),POINTER :: cc
-      AED_REAL,DIMENSION(:),  POINTER :: cc_hz
-      AED_REAL,DIMENSION(:,:),POINTER :: cc_diag
-      AED_REAL,DIMENSION(:),  POINTER :: cc_diag_hz
+      AED_REAL,DIMENSION(:,:),POINTER :: cc         => null()
+      AED_REAL,DIMENSION(:),  POINTER :: cc_hz      => null()
+      AED_REAL,DIMENSION(:,:),POINTER :: cc_diag    => null()
+      AED_REAL,DIMENSION(:),  POINTER :: cc_diag_hz => null()
 
-      AED_REAL,DIMENSION(:),POINTER :: temp     !# temperature
-      AED_REAL,DIMENSION(:),POINTER :: salt     !# salinity
-      AED_REAL,DIMENSION(:),POINTER :: rho      !# density
-      AED_REAL,DIMENSION(:),POINTER :: dz       !# layer thickness
-      AED_REAL,DIMENSION(:),POINTER :: height   !# layer height (previously "h")
-      AED_REAL,DIMENSION(:),POINTER :: area     !# layer area
-      AED_REAL,DIMENSION(:),POINTER :: depth    !# col_depth (previously "z")
-      AED_REAL,DIMENSION(:),POINTER :: extc     !# extinction coefficient
-      AED_REAL,DIMENSION(:),POINTER :: tss
-      AED_REAL,DIMENSION(:),POINTER :: ss1
-      AED_REAL,DIMENSION(:),POINTER :: ss2
-      AED_REAL,DIMENSION(:),POINTER :: ss3
-      AED_REAL,DIMENSION(:),POINTER :: ss4
-      AED_REAL,DIMENSION(:),POINTER :: cvel     !# cell velocity
-      AED_REAL,DIMENSION(:),POINTER :: vvel     !# vertical velocity
-      AED_REAL,DIMENSION(:),POINTER :: bio_drag
-      AED_REAL,DIMENSION(:),POINTER :: rad
-      AED_REAL,DIMENSION(:),POINTER :: I_0      !# par_sf
-      AED_REAL,DIMENSION(:),POINTER :: wnd
-      AED_REAL,DIMENSION(:),POINTER :: air_temp
-      AED_REAL,DIMENSION(:),POINTER :: air_pres
-      AED_REAL,DIMENSION(:),POINTER :: rain
-      AED_REAL,DIMENSION(:),POINTER :: humidity
-      AED_REAL,DIMENSION(:),POINTER :: longwave
-      AED_REAL,DIMENSION(:),POINTER :: bathy
-      AED_REAL,DIMENSION(:),POINTER :: rainloss
-      AED_REAL,DIMENSION(:),POINTER :: ustar_bed
-      AED_REAL,DIMENSION(:),POINTER :: wv_uorb
-      AED_REAL,DIMENSION(:),POINTER :: wv_t
-      AED_REAL,DIMENSION(:),POINTER :: layer_stress
-      AED_REAL,DIMENSION(:),POINTER :: sed_zones
-      AED_REAL,DIMENSION(:),POINTER :: pres
+      AED_REAL,DIMENSION(:),POINTER :: temp      => null() !# temperature
+      AED_REAL,DIMENSION(:),POINTER :: salt      => null() !# salinity
+      AED_REAL,DIMENSION(:),POINTER :: rho       => null() !# density
+      AED_REAL,DIMENSION(:),POINTER :: dz        => null() !# layer thickness
+      AED_REAL,DIMENSION(:),POINTER :: height    => null() !# layer height (previously "h")
+      AED_REAL,DIMENSION(:),POINTER :: area      => null() !# layer area
+      AED_REAL,DIMENSION(:),POINTER :: depth     => null() !# col_depth (previously "z")
+      AED_REAL,DIMENSION(:),POINTER :: extc      => null() !# extinction coefficient
+      AED_REAL,DIMENSION(:),POINTER :: tss       => null()
+      AED_REAL,DIMENSION(:),POINTER :: ss1       => null()
+      AED_REAL,DIMENSION(:),POINTER :: ss2       => null()
+      AED_REAL,DIMENSION(:),POINTER :: ss3       => null()
+      AED_REAL,DIMENSION(:),POINTER :: ss4       => null()
+      AED_REAL,DIMENSION(:),POINTER :: cvel      => null() !# cell velocity
+      AED_REAL,DIMENSION(:),POINTER :: vvel      => null() !# vertical velocity
+      AED_REAL,DIMENSION(:),POINTER :: bio_drag  => null()
+      AED_REAL,DIMENSION(:),POINTER :: rad       => null()
+      AED_REAL,DIMENSION(:),POINTER :: I_0       => null() !# par_sf
+      AED_REAL,DIMENSION(:),POINTER :: wnd       => null()
+      AED_REAL,DIMENSION(:),POINTER :: air_temp  => null()
+      AED_REAL,DIMENSION(:),POINTER :: air_pres  => null()
+      AED_REAL,DIMENSION(:),POINTER :: rain      => null()
+      AED_REAL,DIMENSION(:),POINTER :: humidity  => null()
+      AED_REAL,DIMENSION(:),POINTER :: longwave  => null()
+      AED_REAL,DIMENSION(:),POINTER :: bathy     => null()
+      AED_REAL,DIMENSION(:),POINTER :: rainloss  => null()
+      AED_REAL,DIMENSION(:),POINTER :: ustar_bed => null()
+      AED_REAL,DIMENSION(:),POINTER :: wv_uorb   => null()
+      AED_REAL,DIMENSION(:),POINTER :: wv_t      => null()
+      AED_REAL,DIMENSION(:),POINTER :: layer_stress => null()
+      AED_REAL,DIMENSION(:),POINTER :: sed_zones => null()
+      AED_REAL,DIMENSION(:),POINTER :: pres => null()
 
-      AED_REAL,DIMENSION(:),POINTER :: nir
-      AED_REAL,DIMENSION(:),POINTER :: par
-      AED_REAL,DIMENSION(:),POINTER :: uva
-      AED_REAL,DIMENSION(:),POINTER :: uvb
+      AED_REAL,DIMENSION(:),POINTER :: nir => null()
+      AED_REAL,DIMENSION(:),POINTER :: par => null()
+      AED_REAL,DIMENSION(:),POINTER :: uva => null()
+      AED_REAL,DIMENSION(:),POINTER :: uvb => null()
 
-      INTEGER, DIMENSION(:,:),POINTER :: mat_id
-      LOGICAL, DIMENSION(:),  POINTER :: active
+      INTEGER, DIMENSION(:,:),POINTER :: mat_id => null()
+      LOGICAL, DIMENSION(:),  POINTER :: active => null()
 
-      AED_REAL,POINTER :: longitude
-      AED_REAL,POINTER :: latitude
+      AED_REAL,POINTER :: longitude => null()
+      AED_REAL,POINTER :: latitude  => null()
 
-      AED_REAL,POINTER :: yearday
-      AED_REAL,POINTER :: timestep
+      AED_REAL,POINTER :: yearday  => null()
+      AED_REAL,POINTER :: timestep => null()
    END TYPE api_env_t
    !#===========================================================#!
 
    !#===========================================================#!
    TYPE api_water_col_t
-      TYPE(aed_column_t),POINTER :: column(:)
-      TYPE(api_env_t),POINTER :: env
+      TYPE(aed_column_t),POINTER :: column(:) => null()
+      TYPE(api_env_t),POINTER :: env          => null()
    END TYPE api_water_col_t
    !#===========================================================#!
 !
@@ -191,78 +191,78 @@ MODULE aed_api
    !-------------------------------------------------------------
 
    !# Main arrays storing/pointing to the state and diagnostic variables
-   AED_REAL,DIMENSION(:,:),POINTER :: cc
-   AED_REAL,DIMENSION(:),  POINTER :: cc_hz
-   AED_REAL,DIMENSION(:,:),POINTER :: cc_diag
-   AED_REAL,DIMENSION(:),  POINTER :: cc_diag_hz
+   AED_REAL,DIMENSION(:,:),POINTER :: cc          => null()
+   AED_REAL,DIMENSION(:),  POINTER :: cc_hz       => null()
+   AED_REAL,DIMENSION(:,:),POINTER :: cc_diag     => null()
+   AED_REAL,DIMENSION(:),  POINTER :: cc_diag_hz  => null()
 
-   AED_REAL,DIMENSION(:),POINTER :: temp
-   AED_REAL,DIMENSION(:),POINTER :: salt
-   AED_REAL,DIMENSION(:),POINTER :: rho
-   AED_REAL,DIMENSION(:),POINTER :: dz
-   AED_REAL,DIMENSION(:),POINTER :: height
-   AED_REAL,DIMENSION(:),POINTER :: area
-   AED_REAL,DIMENSION(:),POINTER :: depth
-   AED_REAL,DIMENSION(:),POINTER :: extc
-   AED_REAL,DIMENSION(:),POINTER :: tss
-   AED_REAL,DIMENSION(:),POINTER :: ss1
-   AED_REAL,DIMENSION(:),POINTER :: ss2
-   AED_REAL,DIMENSION(:),POINTER :: ss3
-   AED_REAL,DIMENSION(:),POINTER :: ss4
-   AED_REAL,DIMENSION(:),POINTER :: cvel   !# cell velocity
-   AED_REAL,DIMENSION(:),POINTER :: bio_drag
-   AED_REAL,DIMENSION(:),POINTER :: rad
-   AED_REAL,DIMENSION(:),POINTER :: I_0
-   AED_REAL,DIMENSION(:),POINTER :: wnd
-   AED_REAL,DIMENSION(:),POINTER :: air_temp
-   AED_REAL,DIMENSION(:),POINTER :: air_pres
-   AED_REAL,DIMENSION(:),POINTER :: rain
-   AED_REAL,DIMENSION(:),POINTER :: humidity
-   AED_REAL,DIMENSION(:),POINTER :: longwave
-   AED_REAL,DIMENSION(:),POINTER :: bathy
-   AED_REAL,DIMENSION(:),POINTER :: rainloss
-   AED_REAL,DIMENSION(:),POINTER :: ustar_bed
-   AED_REAL,DIMENSION(:),POINTER :: wv_uorb
-   AED_REAL,DIMENSION(:),POINTER :: wv_t
-   AED_REAL,DIMENSION(:),POINTER :: vvel   !# vertical velocity
-   AED_REAL,DIMENSION(:),POINTER :: layer_stress
-   AED_REAL,DIMENSION(:),POINTER :: sed_zones
-   AED_REAL,DIMENSION(:),POINTER :: pres
+   AED_REAL,DIMENSION(:),POINTER :: temp      => null()
+   AED_REAL,DIMENSION(:),POINTER :: salt      => null()
+   AED_REAL,DIMENSION(:),POINTER :: rho       => null()
+   AED_REAL,DIMENSION(:),POINTER :: dz        => null()
+   AED_REAL,DIMENSION(:),POINTER :: height    => null()
+   AED_REAL,DIMENSION(:),POINTER :: area      => null()
+   AED_REAL,DIMENSION(:),POINTER :: depth     => null()
+   AED_REAL,DIMENSION(:),POINTER :: extc      => null()
+   AED_REAL,DIMENSION(:),POINTER :: tss       => null()
+   AED_REAL,DIMENSION(:),POINTER :: ss1       => null()
+   AED_REAL,DIMENSION(:),POINTER :: ss2       => null()
+   AED_REAL,DIMENSION(:),POINTER :: ss3       => null()
+   AED_REAL,DIMENSION(:),POINTER :: ss4       => null()
+   AED_REAL,DIMENSION(:),POINTER :: cvel      => null()  !# cell velocity
+   AED_REAL,DIMENSION(:),POINTER :: bio_drag  => null()
+   AED_REAL,DIMENSION(:),POINTER :: rad       => null()
+   AED_REAL,DIMENSION(:),POINTER :: I_0       => null()
+   AED_REAL,DIMENSION(:),POINTER :: wnd       => null()
+   AED_REAL,DIMENSION(:),POINTER :: air_temp  => null()
+   AED_REAL,DIMENSION(:),POINTER :: air_pres  => null()
+   AED_REAL,DIMENSION(:),POINTER :: rain      => null()
+   AED_REAL,DIMENSION(:),POINTER :: humidity  => null()
+   AED_REAL,DIMENSION(:),POINTER :: longwave  => null()
+   AED_REAL,DIMENSION(:),POINTER :: bathy     => null()
+   AED_REAL,DIMENSION(:),POINTER :: rainloss  => null()
+   AED_REAL,DIMENSION(:),POINTER :: ustar_bed => null()
+   AED_REAL,DIMENSION(:),POINTER :: wv_uorb   => null()
+   AED_REAL,DIMENSION(:),POINTER :: wv_t      => null()
+   AED_REAL,DIMENSION(:),POINTER :: vvel      => null()  !# vertical velocity
+   AED_REAL,DIMENSION(:),POINTER :: layer_stress => null()
+   AED_REAL,DIMENSION(:),POINTER :: sed_zones    => null()
+   AED_REAL,DIMENSION(:),POINTER :: pres         => null()
 
    !# Arrays for environmental variables (used if they are not supplied externally)
-   AED_REAL,DIMENSION(:),POINTER :: nir
-   AED_REAL,DIMENSION(:),POINTER :: par
-   AED_REAL,DIMENSION(:),POINTER :: uva
-   AED_REAL,DIMENSION(:),POINTER :: uvb
+   AED_REAL,DIMENSION(:),POINTER :: nir => null()
+   AED_REAL,DIMENSION(:),POINTER :: par => null()
+   AED_REAL,DIMENSION(:),POINTER :: uva => null()
+   AED_REAL,DIMENSION(:),POINTER :: uvb => null()
 
-   INTEGER, DIMENSION(:,:),POINTER :: mat_id
-   LOGICAL, DIMENSION(:),  POINTER :: active
+   INTEGER, DIMENSION(:,:),POINTER :: mat_id => null()
+   LOGICAL, DIMENSION(:),  POINTER :: active => null()
 
 !  !# Maps to nearest cell with water (for riparian exchange)
 ! may be tuflow specific
-!  AED_REAL,DIMENSION(:),POINTER :: nearest_active
-!  AED_REAL,DIMENSION(:),POINTER :: nearest_depth
-!  INTEGER, DIMENSION(:),POINTER :: route_table
+!  AED_REAL,DIMENSION(:),POINTER :: nearest_active => null()
+!  AED_REAL,DIMENSION(:),POINTER :: nearest_depth => null()
+!  INTEGER, DIMENSION(:),POINTER :: route_table => null()
 
    !# Maps of surface, bottom and wet/dry (active) cells
-!  INTEGER,DIMENSION(:),POINTER :: surf_map
-!  INTEGER,DIMENSION(:),POINTER :: benth_map
-!  LOGICAL,DIMENSION(:),POINTER :: active
+!  INTEGER,DIMENSION(:),POINTER :: surf_map => null()
+!  INTEGER,DIMENSION(:),POINTER :: benth_map => null()
+!  LOGICAL,DIMENSION(:),POINTER :: active => null()
 
    !# Arrays for work, vertical movement (ws), and cross-boundary fluxes
    AED_REAL,DIMENSION(:,:),ALLOCATABLE :: ws
    AED_REAL,DIMENSION(:),ALLOCATABLE   :: min_, max_
 
    !# To support light
-   AED_REAL,POINTER :: yearday
-   AED_REAL,POINTER :: timestep
-   AED_REAL,POINTER :: longitude
-   AED_REAL,POINTER :: latitude
+   AED_REAL,POINTER :: yearday => null()
+   AED_REAL,POINTER :: timestep => null()
+   AED_REAL,POINTER :: longitude => null()
+   AED_REAL,POINTER :: latitude => null()
 
    !# Particle groups
 !  INTEGER :: num_groups
-!  TYPE(partgroup),DIMENSION(:),POINTER :: particle_groups
-!  TYPE(partgroup_cell),DIMENSION(:),ALLOCATABLE :: all_particles
+!  TYPE(partgroup),DIMENSION(:),POINTER :: particle_groups => null()
+!  TYPE(partgroup_cell),DIMENSION(:),ALLOCATABLE :: all_particles => null()
 
    !# Misc variables/options
 !  LOGICAL :: request_nearest = .FALSE.
@@ -1437,6 +1437,7 @@ SUBROUTINE aed_clean_model()
 ! Finish biogeochemical model
 !-------------------------------------------------------------------------------
 !BEGIN
+   CALL aed_delete()
    ! Deallocate internal arrays
    IF (ALLOCATED(ws))         DEALLOCATE(ws)
    IF (ASSOCIATED(par))       DEALLOCATE(par)
