@@ -53,7 +53,9 @@ MODULE aed_api
           api_config_t,         &
           aed_config_model,     &
           api_env_t,            &
-          aed_set_env_model,    &
+          aed_set_model_env,    &
+          api_data_t,           &
+          aed_set_model_data,   &
           sub_mobility_t
 
    !#===========================================================#!
@@ -88,19 +90,22 @@ MODULE aed_api
    !#===========================================================#!
 
    !#===========================================================#!
-   TYPE api_env_t
+   TYPE api_data_t
       AED_REAL,DIMENSION(:,:),POINTER :: cc         => null()
       AED_REAL,DIMENSION(:),  POINTER :: cc_hz      => null()
       AED_REAL,DIMENSION(:,:),POINTER :: cc_diag    => null()
       AED_REAL,DIMENSION(:),  POINTER :: cc_diag_hz => null()
+   END TYPE api_data_t
 
+   TYPE api_env_t
       AED_REAL,DIMENSION(:),POINTER :: temp      => null() !# temperature
       AED_REAL,DIMENSION(:),POINTER :: salt      => null() !# salinity
       AED_REAL,DIMENSION(:),POINTER :: rho       => null() !# density
       AED_REAL,DIMENSION(:),POINTER :: dz        => null() !# layer thickness
       AED_REAL,DIMENSION(:),POINTER :: height    => null() !# layer height (previously "h")
       AED_REAL,DIMENSION(:),POINTER :: area      => null() !# layer area
-      AED_REAL,DIMENSION(:),POINTER :: depth     => null() !# col_depth (previously "z")
+      AED_REAL,DIMENSION(:),POINTER :: depth     => null() !# layer_depth (previously "z")
+      AED_REAL,DIMENSION(:),POINTER :: col_depth => null() !# col_depth (sheet - total depth of column)
       AED_REAL,DIMENSION(:),POINTER :: extc      => null() !# extinction coefficient
       AED_REAL,DIMENSION(:),POINTER :: tss       => null()
       AED_REAL,DIMENSION(:),POINTER :: ss1       => null()
@@ -203,6 +208,7 @@ MODULE aed_api
    AED_REAL,DIMENSION(:),POINTER :: height    => null()
    AED_REAL,DIMENSION(:),POINTER :: area      => null()
    AED_REAL,DIMENSION(:),POINTER :: depth     => null()
+   AED_REAL,DIMENSION(:),POINTER :: col_depth => null()
    AED_REAL,DIMENSION(:),POINTER :: extc      => null()
    AED_REAL,DIMENSION(:),POINTER :: tss       => null()
    AED_REAL,DIMENSION(:),POINTER :: ss1       => null()
@@ -510,7 +516,61 @@ END SUBROUTINE aed_config_model
 
 
 !###############################################################################
-SUBROUTINE aed_set_env_model(env)
+SUBROUTINE aed_set_model_data(env)
+!-------------------------------------------------------------------------------
+! Check that all variable dependencies have been met
+!-------------------------------------------------------------------------------
+!ARGUMENTS
+   TYPE(api_data_t), INTENT(in) :: env
+!
+!LOCALS
+   INTEGER :: av, v, sv, status
+   TYPE(aed_variable_t),POINTER :: tvar
+!-------------------------------------------------------------------------------
+!BEGIN
+   cc         => env%cc
+   cc_hz      => env%cc_hz
+   cc_diag    => env%cc_diag
+   cc_diag_hz => env%cc_diag_hz
+
+   ALLOCATE(min_((n_vars + n_vars_ben))) ; ALLOCATE(max_((n_vars + n_vars_ben)))
+
+   CALL aed_show_vars
+
+   !----------------------------------------------------------------------------
+
+   !# Now set initial values
+   v = 0 ; sv = 0;
+   DO av=1,n_aed_vars
+      IF ( .NOT.  aed_get_var(av, tvar) ) STOP "     ERROR getting variable info"
+      IF ( .NOT. ( tvar%extern .OR. tvar%diag) ) THEN  !# neither global nor diagnostic variable
+         IF ( tvar%sheet ) THEN
+            sv = sv + 1
+            cc(:, n_vars+sv) = tvar%initial
+         ELSE
+            v = v + 1
+            cc(:, v) = tvar%initial
+         ENDIF
+      ENDIF
+   ENDDO
+
+   !# Allocate array with vertical movement rates (m/s, positive for upwards),
+   !# and set these to the values provided by the model.
+   !# allocated for all vars even though only state vars entries will be used
+   ALLOCATE(ws(MaxLayers, n_aed_vars),stat=status)
+   IF (status /= 0) STOP 'allocate_memory(): Error allocating (ws)'
+   ws = zero_
+
+   CALL aed_check_data
+
+   write(*,"(/,5X,'----------  AED config : end  ----------',/)")
+
+END SUBROUTINE aed_set_model_data
+!+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+
+!###############################################################################
+SUBROUTINE aed_set_model_env(env)
 !-------------------------------------------------------------------------------
 ! Check that all variable dependencies have been met
 !-------------------------------------------------------------------------------
@@ -518,18 +578,10 @@ SUBROUTINE aed_set_env_model(env)
    TYPE(api_env_t), INTENT(in) :: env
 !
 !LOCALS
-   INTEGER :: av, v, sv, status
-!  INTEGER :: v, d, sv, sd, ev, err_count
    INTEGER :: tv
-   TYPE(aed_variable_t),POINTER :: tvar
 !-------------------------------------------------------------------------------
 !BEGIN
 !
-   cc         => env%cc
-   cc_hz      => env%cc_hz
-   cc_diag    => env%cc_diag
-   cc_diag_hz => env%cc_diag_hz
-
    yearday  => env%yearday
    timestep => env%timestep
 
@@ -543,6 +595,7 @@ SUBROUTINE aed_set_env_model(env)
    height       => env%height
    area         => env%area
    depth        => env%depth
+   col_depth    => env%col_depth
    extc         => env%extc
    tss          => env%tss
    ss1          => env%ss1
@@ -611,7 +664,7 @@ SUBROUTINE aed_set_env_model(env)
    IF (ASSOCIATED(sed_zones))      tv=aed_provide_sheet_global('sed_zone',      'sediment zone',     '-'             )
 
  ! IF (ASSOCIATED(col_num))        tv=aed_provide_sheet_global('col_num',       'column number',     '-'             )
- ! IF (ASSOCIATED(col_depth))      tv=aed_provide_sheet_global('col_depth',     'column water depth','m above bottom')
+   IF (ASSOCIATED(col_depth))      tv=aed_provide_sheet_global('col_depth',     'column water depth','m above bottom')
  ! IF (ASSOCIATED(nearest_active)) tv=aed_provide_sheet_global('nearest_active','nearest active',    '-'             )
  ! IF (ASSOCIATED(nearest_depth))  tv=aed_provide_sheet_global('nearest_depth', 'nearest depth',     'm'             )
 
@@ -621,40 +674,7 @@ SUBROUTINE aed_set_env_model(env)
    tv=aed_provide_global('par',        'par',                   'W/m2'   )
    tv=aed_provide_global('uva',        'uva',                   'W/m2'   )
    tv=aed_provide_global('uvb',        'uvb',                   'W/m2'   )
-
-   ALLOCATE(min_((n_vars + n_vars_ben))) ; ALLOCATE(max_((n_vars + n_vars_ben)))
-
-   CALL aed_show_vars
-
-   !----------------------------------------------------------------------------
-
-   !# Now set initial values
-   v = 0 ; sv = 0;
-   DO av=1,n_aed_vars
-      IF ( .NOT.  aed_get_var(av, tvar) ) STOP "     ERROR getting variable info"
-      IF ( .NOT. ( tvar%extern .OR. tvar%diag) ) THEN  !# neither global nor diagnostic variable
-         IF ( tvar%sheet ) THEN
-            sv = sv + 1
-            cc(:, n_vars+sv) = tvar%initial
-         ELSE
-            v = v + 1
-            cc(:, v) = tvar%initial
-         ENDIF
-      ENDIF
-   ENDDO
-
-   !# Allocate array with vertical movement rates (m/s, positive for upwards),
-   !# and set these to the values provided by the model.
-   !# allocated for all vars even though only state vars entries will be used
-   ALLOCATE(ws(MaxLayers, n_aed_vars),stat=status)
-   IF (status /= 0) STOP 'allocate_memory(): Error allocating (ws)'
-   ws = zero_
-
-   CALL aed_check_data
-
-   write(*,"(/,5X,'----------  AED config : end  ----------',/)")
-
-END SUBROUTINE aed_set_env_model
+END SUBROUTINE aed_set_model_env
 !+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 
 
@@ -758,7 +778,7 @@ SUBROUTINE define_column(column, top, flux_pel, flux_atm, flux_ben)
 !BEGIN
    v = 0 ; d = 0; sv = 0; sd = 0 ; ev = 0
    DO av=1,n_aed_vars
-      IF ( .NOT.  aed_get_var(av, tvar) ) STOP "Error getting variable info"
+      IF ( .NOT. aed_get_var(av, tvar) ) STOP "Error getting variable info"
 
       IF ( tvar%extern ) THEN !# global variable
          ev = ev + 1
@@ -785,7 +805,7 @@ SUBROUTINE define_column(column, top, flux_pel, flux_atm, flux_ben)
             CASE ( 'air_temp' )    ; column(av)%cell_sheet => air_temp(1)
             CASE ( 'air_pres' )    ; column(av)%cell_sheet => air_pres(1)
             CASE ( 'humidity' )    ; column(av)%cell_sheet => humidity(1)
-            CASE ( 'col_depth' )   ; column(av)%cell_sheet => depth(1)
+            CASE ( 'col_depth' )   ; column(av)%cell_sheet => col_depth(1)
             CASE ( 'longitude' )   ; column(av)%cell_sheet => longitude
             CASE ( 'latitude' )    ; column(av)%cell_sheet => latitude
             CASE ( 'yearday' )     ; column(av)%cell_sheet => yearday
@@ -805,7 +825,6 @@ SUBROUTINE define_column(column, top, flux_pel, flux_atm, flux_ben)
             sv = sv + 1
             IF ( tvar%bot ) THEN
                column(av)%cell_sheet => cc(1, n_vars+sv)
-!              print *,'av',av,sv
             ELSEIF ( tvar%top ) THEN
                column(av)%cell_sheet => cc(top, n_vars+sv)
             ENDIF
@@ -1081,7 +1100,7 @@ CONTAINS
             CASE ( 'wind_speed' )  ; column(av)%cell_sheet => wnd(1)
             CASE ( 'par_sf' )      ; column(av)%cell_sheet => I_0(1)
             CASE ( 'taub' )        ; column(av)%cell_sheet => layer_stress(1)
-            CASE ( 'col_depth' )   ; column(av)%cell_sheet => depth(1)
+            CASE ( 'col_depth' )   ; column(av)%cell_sheet => col_depth(1)
             CASE ( 'layer_area' )  ; column(av)%cell => aedZones(zon)%z_area(:)
             CASE ( 'rain' )        ; column(av)%cell_sheet => rain(1)
             CASE ( 'air_temp' )    ; column(av)%cell_sheet => air_temp(1)
@@ -1440,10 +1459,10 @@ SUBROUTINE aed_clean_model()
    CALL aed_delete()
    ! Deallocate internal arrays
    IF (ALLOCATED(ws))         DEALLOCATE(ws)
-   IF (ASSOCIATED(par))       DEALLOCATE(par)
-   IF (ASSOCIATED(nir))       DEALLOCATE(nir)
-   IF (ASSOCIATED(uva))       DEALLOCATE(uva)
-   IF (ASSOCIATED(uvb))       DEALLOCATE(uvb)
+!  IF (ASSOCIATED(par))       DEALLOCATE(par)
+!  IF (ASSOCIATED(nir))       DEALLOCATE(nir)
+!  IF (ASSOCIATED(uva))       DEALLOCATE(uva)
+!  IF (ASSOCIATED(uvb))       DEALLOCATE(uvb)
 END SUBROUTINE aed_clean_model
 !+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 
