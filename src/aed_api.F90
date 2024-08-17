@@ -121,6 +121,7 @@ MODULE aed_api
       AED_REAL,DIMENSION(:),POINTER :: air_temp  => null()
       AED_REAL,DIMENSION(:),POINTER :: air_pres  => null()
       AED_REAL,DIMENSION(:),POINTER :: rain      => null()
+      AED_REAL,DIMENSION(:),POINTER :: evap      => null()
       AED_REAL,DIMENSION(:),POINTER :: humidity  => null()
       AED_REAL,DIMENSION(:),POINTER :: longwave  => null()
       AED_REAL,DIMENSION(:),POINTER :: bathy     => null()
@@ -223,6 +224,7 @@ MODULE aed_api
    AED_REAL,DIMENSION(:),POINTER :: air_temp  => null()
    AED_REAL,DIMENSION(:),POINTER :: air_pres  => null()
    AED_REAL,DIMENSION(:),POINTER :: rain      => null()
+   AED_REAL,DIMENSION(:),POINTER :: evap      => null()
    AED_REAL,DIMENSION(:),POINTER :: humidity  => null()
    AED_REAL,DIMENSION(:),POINTER :: longwave  => null()
    AED_REAL,DIMENSION(:),POINTER :: bathy     => null()
@@ -611,6 +613,7 @@ SUBROUTINE aed_set_model_env(env)
    air_temp     => env%air_temp
    air_pres     => env%air_pres
    rain         => env%rain
+   evap         => env%evap
    humidity     => env%humidity
    longwave     => env%longwave
    bathy        => env%bathy
@@ -656,6 +659,7 @@ SUBROUTINE aed_set_model_env(env)
    IF (ASSOCIATED(air_temp))       tv=aed_provide_sheet_global('air_temp',      'air temperature',   'celsius'       )
    IF (ASSOCIATED(air_pres))       tv=aed_provide_sheet_global('air_pres',      'air pressure',      'Pa'            )
    IF (ASSOCIATED(rain))           tv=aed_provide_sheet_global('rain',          'rainfall',          'm/s'           )
+   IF (ASSOCIATED(evap))           tv=aed_provide_sheet_global('evap',          'evaporation',       'm/s'           )
    IF (ASSOCIATED(humidity))       tv=aed_provide_sheet_global('humidity',      'relative humidity', '-'             )
    IF (ASSOCIATED(longwave))       tv=aed_provide_sheet_global('longwave',      'longwave',          'W/m2'          )
    IF (ASSOCIATED(bathy))          tv=aed_provide_sheet_global('bathy',         'bathy',             'm above datum' )
@@ -720,6 +724,7 @@ SUBROUTINE aed_check_data
             CASE ( 'col_depth' )   ; tvar%found = .true.
             CASE ( 'layer_area' )  ; tvar%found = .true.
             CASE ( 'rain' )        ; tvar%found = .true.
+            CASE ( 'evap' )        ; tvar%found = .true.
             CASE ( 'air_temp' )    ; tvar%found = .true.
             CASE ( 'air_pres' )    ; tvar%found = .true.
             CASE ( 'humidity' )    ; tvar%found = .true.
@@ -802,6 +807,7 @@ SUBROUTINE define_column(column, top, flux_pel, flux_atm, flux_ben)
             CASE ( 'taub' )        ; column(av)%cell_sheet => layer_stress(1)
             CASE ( 'layer_area' )  ; column(av)%cell => area(:)
             CASE ( 'rain' )        ; column(av)%cell_sheet => rain(1)
+            CASE ( 'evap' )        ; column(av)%cell_sheet => evap(1)
             CASE ( 'air_temp' )    ; column(av)%cell_sheet => air_temp(1)
             CASE ( 'air_pres' )    ; column(av)%cell_sheet => air_pres(1)
             CASE ( 'humidity' )    ; column(av)%cell_sheet => humidity(1)
@@ -1103,6 +1109,7 @@ CONTAINS
             CASE ( 'col_depth' )   ; column(av)%cell_sheet => col_depth(1)
             CASE ( 'layer_area' )  ; column(av)%cell => aedZones(zon)%z_area(:)
             CASE ( 'rain' )        ; column(av)%cell_sheet => rain(1)
+            CASE ( 'evap' )        ; column(av)%cell_sheet => evap(1)
             CASE ( 'air_temp' )    ; column(av)%cell_sheet => air_temp(1)
             CASE ( 'air_pres' )    ; column(av)%cell_sheet => air_pres(1)
             CASE ( 'humidity' )    ; column(av)%cell_sheet => humidity(1)
