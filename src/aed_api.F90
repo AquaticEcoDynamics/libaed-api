@@ -927,6 +927,7 @@ SUBROUTINE aed_run_model(wlev, doMobility, doSurface)
    AED_REAL,TARGET :: flux_ben(n_vars+n_vars_ben), flux_atm(n_vars+n_vars_ben)
    AED_REAL,TARGET,ALLOCATABLE :: flux_pel(:, :)
    AED_REAL,TARGET :: flux_zon(aed_n_zones, n_vars+n_vars_ben)
+   AED_REAL :: pa = 0.
 !
 !-------------------------------------------------------------------------------
 !BEGIN
@@ -938,7 +939,8 @@ SUBROUTINE aed_run_model(wlev, doMobility, doSurface)
 !        print *,'i =',i," j =",j
 !        print *,'zone_heights',height(i),j,aedZones(j)%z_heights(1)
          IF (height(i) .GT. aedZones(j)%z_heights(1)) THEN
-            sed_zones(i) = j * area(i)
+            sed_zones(i) = j * ( area(i) - pa ) / area(i)
+            pa = area(i)
             j = j+1
          ELSE
             sed_zones(i) = j
