@@ -81,38 +81,40 @@ MODULE aed_zones
    INTERFACE
 
      !#########################################################
-     SUBROUTINE calc_zone_areas_t(theZones, n_zones, areas, wlev, surf)
+     SUBROUTINE calc_zone_areas_t(theZones, n_zones, areas, heights, wlev)
         IMPORT :: api_zone_t
         TYPE(api_zone_t),DIMENSION(:),INTENT(inout) :: theZones
         INTEGER,INTENT(in) :: n_zones
-        AED_REAL,DIMENSION(:),INTENT(in) :: areas
+        AED_REAL,DIMENSION(:),POINTER,INTENT(in) :: areas
+        AED_REAL,DIMENSION(:),POINTER,INTENT(in) :: heights
         INTEGER,INTENT(in) :: wlev
-        AED_REAL :: surf
      END SUBROUTINE calc_zone_areas_t
      !+++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 
      !#########################################################
-     SUBROUTINE copy_to_zone_t(theZones, n_zones, x_cc, x_cc_hz, x_diag, x_diag_hz, wlev)
+     SUBROUTINE copy_to_zone_t(theZones, n_zones, heights, x_cc, x_cc_hz, x_diag, x_diag_hz, wlev)
         IMPORT :: api_zone_t
         TYPE(api_zone_t),DIMENSION(:),INTENT(inout) :: theZones
         INTEGER,INTENT(in) :: n_zones
-        AED_REAL,DIMENSION(:,:),INTENT(in) :: x_cc
-        AED_REAL,DIMENSION(:),INTENT(in) :: x_cc_hz
-        AED_REAL,DIMENSION(:,:),INTENT(in) :: x_diag
-        AED_REAL,DIMENSION(:),INTENT(in) :: x_diag_hz
+        AED_REAL,DIMENSION(:),  POINTER,INTENT(in) :: heights
+        AED_REAL,DIMENSION(:,:),POINTER,INTENT(in) :: x_cc
+        AED_REAL,DIMENSION(:),  POINTER,INTENT(in) :: x_cc_hz
+        AED_REAL,DIMENSION(:,:),POINTER,INTENT(in) :: x_diag
+        AED_REAL,DIMENSION(:),  POINTER,INTENT(in) :: x_diag_hz
         INTEGER,INTENT(in) :: wlev
      END SUBROUTINE copy_to_zone_t
      !+++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 
      !#########################################################
-     SUBROUTINE copy_from_zone_t(theZones, n_zones, x_cc, x_cc_hz, x_diag, x_diag_hz, wlev)
+     SUBROUTINE copy_from_zone_t(theZones, n_zones, heights, x_cc, x_cc_hz, x_diag, x_diag_hz, wlev)
         IMPORT :: api_zone_t
         TYPE(api_zone_t),DIMENSION(:),INTENT(in) :: theZones
         INTEGER,INTENT(in) :: n_zones
-        AED_REAL,DIMENSION(:,:),INTENT(inout) :: x_cc
-        AED_REAL,DIMENSION(:),INTENT(inout) :: x_cc_hz
-        AED_REAL,DIMENSION(:,:),INTENT(inout) :: x_diag
-        AED_REAL,DIMENSION(:),INTENT(inout) :: x_diag_hz
+        AED_REAL,DIMENSION(:),  POINTER,INTENT(in) :: heights
+        AED_REAL,DIMENSION(:,:),POINTER,INTENT(inout) :: x_cc
+        AED_REAL,DIMENSION(:),  POINTER,INTENT(inout) :: x_cc_hz
+        AED_REAL,DIMENSION(:,:),POINTER,INTENT(inout) :: x_diag
+        AED_REAL,DIMENSION(:),  POINTER,INTENT(inout) :: x_diag_hz
         INTEGER,INTENT(in) :: wlev
      END SUBROUTINE copy_from_zone_t
      !+++++++++++++++++++++++++++++++++++++++++++++++++++++++++

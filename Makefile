@@ -106,10 +106,6 @@ endif
 
 include ../libaed-water/make_rules.inc
 
-${libdir}/${OUTLIB}.a: ${objdir} ${moddir} ${libdir} ${OBJS}
-	ar -rv $@ ${OBJS}
-	ranlib $@
-
 ${libdir}/${OUTLIB}.${so_ext}: ${libdir}/${OUTLIB}.a ${OBJS}
 	$(F90) ${SHARED} -o $@.${SOVERS}.${VERS} ${OBJS} ${LDFLAGS} ${SOFLAGS}
 	ln -sf ${OUTLIB}.${so_ext}.${SOVERS}.${VERS} $@
