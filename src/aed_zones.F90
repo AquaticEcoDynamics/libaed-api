@@ -67,6 +67,22 @@ MODULE aed_zones
       AED_REAL,DIMENSION(:),ALLOCATABLE :: z_pc_wet
       AED_REAL,DIMENSION(:),ALLOCATABLE :: z_heatflux
 
+      AED_REAL,DIMENSION(:),ALLOCATABLE :: z_colnums
+      AED_REAL,DIMENSION(:),ALLOCATABLE :: z_ss1
+      AED_REAL,DIMENSION(:),ALLOCATABLE :: z_ss2
+      AED_REAL,DIMENSION(:),ALLOCATABLE :: z_ss3
+      AED_REAL,DIMENSION(:),ALLOCATABLE :: z_ss4
+      AED_REAL,DIMENSION(:),ALLOCATABLE :: z_wind
+      AED_REAL,DIMENSION(:),ALLOCATABLE :: z_air_temp
+      AED_REAL,DIMENSION(:),ALLOCATABLE :: z_air_pres
+      AED_REAL,DIMENSION(:),ALLOCATABLE :: z_rain
+      AED_REAL,DIMENSION(:),ALLOCATABLE :: z_rainloss
+      AED_REAL,DIMENSION(:),ALLOCATABLE :: z_humidity
+      AED_REAL,DIMENSION(:),ALLOCATABLE :: z_bathy
+      AED_REAL,DIMENSION(:),ALLOCATABLE :: z_I_0
+      AED_REAL,DIMENSION(:),ALLOCATABLE :: z_coldepth
+      AED_REAL,DIMENSION(:),ALLOCATABLE :: z_longwave
+
       AED_REAL,DIMENSION(:,:),POINTER :: z_cc         !(n_levs, n_vars)
       AED_REAL,DIMENSION(:),  POINTER :: z_cc_hz      !(2, n_vars_ben)
       AED_REAL,DIMENSION(:,:),POINTER :: z_cc_diag    !(n_levs, n_diag_vars)
@@ -151,7 +167,7 @@ SUBROUTINE aed_init_zones(n_zones, n_levs, z_cc, z_cc_hz, z_diag, z_diag_hz)
    aed_n_zones = n_zones
 ! print*,"z_cc(",size(z_cc, 1),",",size(z_cc,2),",",size(z_cc,3),")"
 
-   ALLOCATE(aedZones(aed_n_zones))
+   ALLOCATE(aedZones(aed_n_zones+1))
 
    DO zon=1,n_zones
       aedZones(zon)%n_levs = n_levs

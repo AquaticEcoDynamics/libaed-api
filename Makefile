@@ -26,12 +26,10 @@
 #                                                                             #
 ###############################################################################
 
-VERSION=$(shell grep AED_API_VERSION include/aed_api.h | head -1 | cut -f2 -d\")
-SOVERS=$(shell echo $(VERSION) | cut -f1 -d\.)
-VERS=$(shell echo $(VERSION) | cut -f2- -d\.)
-
 LIBAEDAPI=aed-api
 OUTLIB=lib$(LIBAEDAPI)
+
+VERSION=$(shell grep AED_API_VERSION include/aed_api.h | head -1 | cut -f2 -d\")
 
 INCLUDES=-I../libaed-water/${incdir}  -I../libaed-water/${moddir}
 
@@ -39,15 +37,6 @@ ifeq ($(AEDWATDIR),)
   AEDWATDIR=../libaed-water
 endif
 INCLUDES+=-I${AEDWATDIR}/include -I${incdir} -I${AEDWATDIR}/mod
-
-ifeq ($(OSTYPE),Darwin)
-  SHARED=-dynamiclib -undefined dynamic_lookup
-  so_ext=dylib
-else
-  SHARED=-shared -Wl,-soname,$(OUTLIB).so.$(SOVERS)
-  so_ext=so
-endif
-
 
 include ../libaed-water/make_defs.inc
 
@@ -62,8 +51,6 @@ OBJS=${objdir}/aed_bivalve.o \
      ${objdir}/aed_macrophyte.o \
      ${objdir}/aed_benthic.o
 
-
-SOFLAGS = ${libdir}/${OUTLIB}.a
 
 EXTFLAG=
 ifneq ($(AEDBENDIR),)
@@ -96,17 +83,13 @@ endif
 OBJS=${objdir}/aed_zones.o \
      ${objdir}/aed_api.o
 
-ifeq ($(EXTERNAL_LIBS),shared)
-  FFLAGS+=-fPIC
-  TARGET = ${libdir}/$(OUTLIB).${so_ext}
-else
-  FFLAGS+=-fPIE
-  TARGET = ${libdir}/$(OUTLIB).a
-endif
+#ifeq ($(EXTERNAL_LIBS),shared)
+#  FFLAGS+=-fPIC
+#  TARGET = ${libdir}/$(OUTLIB).${so_ext}
+#else
+#  FFLAGS+=-fPIE
+#  TARGET = ${libdir}/$(OUTLIB).a
+#endif
 
 include ../libaed-water/make_rules.inc
 
-${libdir}/${OUTLIB}.${so_ext}: ${libdir}/${OUTLIB}.a ${OBJS}
-	$(F90) ${SHARED} -o $@.${SOVERS}.${VERS} ${OBJS} ${LDFLAGS} ${SOFLAGS}
-	ln -sf ${OUTLIB}.${so_ext}.${SOVERS}.${VERS} $@
-	ln -sf ${OUTLIB}.${so_ext}.${SOVERS}.${VERS} $@.${SOVERS}
