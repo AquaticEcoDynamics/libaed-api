@@ -9,7 +9,7 @@
 !#                                                                             #
 !#      http://aquatic.science.uwa.edu.au/                                     #
 !#                                                                             #
-!#  Copyright 2024 -  The University of Western Australia                      #
+!#  Copyright 2024 - The University of Western Australia                       #
 !#                                                                             #
 !#   AED is free software: you can redistribute it and/or modify               #
 !#   it under the terms of the GNU General Public License as published by      #
@@ -33,10 +33,10 @@
 #ifndef _AED_API_H_
 #define _AED_API_H_
 
-#include <aed.h>
-#include <aed_api_env.h>
+#include "aed.h"
+#include "aed_api_env.h"
 
-#define AED_API_VERSION  0.9.0"
+#define AED_API_VERSION  0.9.1"
 
 #ifndef AED_REAL
 #  define AED_REAL REAL(kind=C_DOUBLE)
@@ -66,43 +66,36 @@
 
 INTERFACE
 
-  !*****************************************************************************
-  !* The 3 environment configuration routines below declare which variables are
-  !* to be made available. The "which" parameter is a constant defined in the
-  !* header file  aed_api_env.h
-  !* The data parameter is an optional pointer to the data, if it is not suplied
-  !* the api will create one.
-  !*****************************************************************************
-
   !#############################################################################
-  SUBROUTINE aed_environ_3d_var(which, data)
+  SUBROUTINE aed_config_model(conf)
   !-----------------------------------------------------------------------------
   !ARGUMENTS
-     INTEGER,INTENT(in) :: which
-   ! AED_REAL,DIMENSION(:,:),POINTER,INTENT(in),OPTIONAL :: data
-     AED_REAL,DIMENSION(:),POINTER,INTENT(in),OPTIONAL :: data
-  !
-  END SUBROUTINE aed_environ_3d_var
+     TYPE(api_config_t), INTENT(in) :: conf
+  END SUBROUTINE aed_config_model
   !+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 
   !#############################################################################
-  SUBROUTINE aed_environ_2d_var(which, data)
+  SUBROUTINE aed_set_model_env(env)
   !-----------------------------------------------------------------------------
   !ARGUMENTS
-     INTEGER,INTENT(in) :: which
-     AED_REAL,DIMENSION(:),POINTER,INTENT(in),OPTIONAL   :: data
-  !
-  END SUBROUTINE aed_environ_2d_var
+     TYPE(api_env_t),INTENT(in) :: env
+  END SUBROUTINE aed_set_model_env
   !+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 
   !#############################################################################
-  SUBROUTINE aed_environ_0d_var(which, data)
+  SUBROUTINE aed_set_model_data(dat)
   !-----------------------------------------------------------------------------
   !ARGUMENTS
-     INTEGER,INTENT(in) :: which
-     AED_REAL,POINTER,INTENT(in),OPTIONAL :: data
-  !
-  END SUBROUTINE aed_environ_0d_var
+     TYPE(api_data_t), INTENT(in) :: dat
+  END SUBROUTINE aed_set_model_data
+  !+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+  !#############################################################################
+  SUBROUTINE aed_set_mobility(mobl) 
+  !-----------------------------------------------------------------------------
+  !ARGUMENTS
+     PROCEDURE(aed_mobility_t),POINTER :: mobl
+  END SUBROUTINE aed_set_mobility
   !+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 
   !*****************************************************************************
@@ -124,7 +117,7 @@ INTERFACE
   !+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 
   !*****************************************************************************
-  !* run the model for ne timestep over "wlev" levels
+  !* run the model for one timestep over "wlev" levels
   !* the "doSurface" parameter was added to alow for ice coverage where there
   !* would be no interaction with the atmosphere
   !*****************************************************************************
@@ -139,6 +132,33 @@ INTERFACE
   END SUBROUTINE aed_run_model
   !+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
   
+  !*****************************************************************************
+  !* For zones.
+  !*****************************************************************************
+
+  !#############################################################################
+  SUBROUTINE aed_init_zones(n_zones, n_levs, z_cc, z_cc_hz, z_diag, z_diag_hz)
+  !-----------------------------------------------------------------------------
+  !ARGUMENTS
+     INTEGER,INTENT(in) :: n_zones, n_levs
+     AED_REAL,DIMENSION(:,:,:),POINTER,INTENT(in) :: z_cc      !(n_zones, n_levs, n_vars)
+     AED_REAL,DIMENSION(:,:),  POINTER,INTENT(in) :: z_cc_hz   !(n_zones+1, n_vars)
+     AED_REAL,DIMENSION(:,:,:),POINTER,INTENT(in) :: z_diag    !(n_zones, n_levs, n_vars)
+     AED_REAL,DIMENSION(:,:)  ,POINTER,INTENT(in) :: z_diag_hz !(n_zones+1, n_vars)
+  END SUBROUTINE aed_init_zones
+  !+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+  !#############################################################################
+  SUBROUTINE api_set_zone_funcs(copy_to, copy_from, calc_areas)
+  !-----------------------------------------------------------------------------
+  !ARGUMENTS
+     PROCEDURE(copy_to_zone_t),POINTER    :: copy_to
+     PROCEDURE(copy_from_zone_t),POINTER  :: copy_from
+     PROCEDURE(calc_zone_areas_t),POINTER :: calc_areas
+  END SUBROUTINE api_set_zone_funcs
+  !+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+
   !*****************************************************************************
   !* Clean up any data allocated.
   !*****************************************************************************

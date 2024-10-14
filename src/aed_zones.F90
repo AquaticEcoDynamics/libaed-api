@@ -42,46 +42,62 @@ MODULE aed_zones
 
    PRIVATE ! By default, make everything private
 
+   !#-----------------------------------------------------------#!
+
+   PUBLIC api_zone_t, aed_init_zones, api_set_zone_funcs
+   PUBLIC aedZones, aed_n_zones
+   PUBLIC p_calc_zone_areas, p_copy_to_zone, p_copy_from_zone
+   PUBLIC calc_zone_areas_t, copy_to_zone_t, copy_from_zone_t
+
+   !#===========================================================#!
+   !# Structured type for Zones environment
+   TYPE :: api_zone_env_t
+      AED_REAL :: z_height
+      AED_REAL :: z_area
+      AED_REAL :: z_pc_wet
+      AED_REAL :: z_dz
+      AED_REAL :: z_depth
+      AED_REAL :: z_col_depth
+      AED_REAL :: z_colnums
+
+      AED_REAL :: z_temp
+      AED_REAL :: z_salt
+      AED_REAL :: z_rho
+      AED_REAL :: z_rad
+      AED_REAL :: z_extc
+      AED_REAL :: z_layer_stress
+      AED_REAL :: z_tss
+      AED_REAL :: z_vel
+      AED_REAL :: z_pres
+      AED_REAL :: z_sed_zones
+      AED_REAL :: z_heatflux
+
+      AED_REAL :: z_ss1
+      AED_REAL :: z_ss2
+      AED_REAL :: z_ss3
+      AED_REAL :: z_ss4
+      AED_REAL :: z_wind
+      AED_REAL :: z_air_temp
+      AED_REAL :: z_air_pres
+      AED_REAL :: z_rain
+      AED_REAL :: z_rainloss
+      AED_REAL :: z_humidity
+      AED_REAL :: z_bathy
+      AED_REAL :: z_I_0
+      AED_REAL :: z_longwave
+      AED_REAL :: z_nir
+      AED_REAL :: z_par
+      AED_REAL :: z_uva
+      AED_REAL :: z_uvb
+   END TYPE api_zone_env_t
+   !#===========================================================#!
+
    !#===========================================================#!
    !# Structured type for Zones
    TYPE :: api_zone_t
-      INTEGER :: n_levs
-      AED_REAL,DIMENSION(:),ALLOCATABLE :: z_temp
-      AED_REAL,DIMENSION(:),ALLOCATABLE :: z_salt
-      AED_REAL,DIMENSION(:),ALLOCATABLE :: z_heights
-      AED_REAL,DIMENSION(:),ALLOCATABLE :: z_rad
-      AED_REAL,DIMENSION(:),ALLOCATABLE :: z_rho
-      AED_REAL,DIMENSION(:),ALLOCATABLE :: z_area
-      AED_REAL,DIMENSION(:),ALLOCATABLE :: z_extc
-      AED_REAL,DIMENSION(:),ALLOCATABLE :: z_layer_stress
-      AED_REAL,DIMENSION(:),ALLOCATABLE :: z_tss
-      AED_REAL,DIMENSION(:),ALLOCATABLE :: z_dz
-      AED_REAL,DIMENSION(:),ALLOCATABLE :: z_vel
-      AED_REAL,DIMENSION(:),ALLOCATABLE :: z_par
-      AED_REAL,DIMENSION(:),ALLOCATABLE :: z_nir
-      AED_REAL,DIMENSION(:),ALLOCATABLE :: z_uva
-      AED_REAL,DIMENSION(:),ALLOCATABLE :: z_uvb
-      AED_REAL,DIMENSION(:),ALLOCATABLE :: z_pres
-      AED_REAL,DIMENSION(:),ALLOCATABLE :: z_depth
-      AED_REAL,DIMENSION(:),ALLOCATABLE :: z_sed_zones
-      AED_REAL,DIMENSION(:),ALLOCATABLE :: z_pc_wet
-      AED_REAL,DIMENSION(:),ALLOCATABLE :: z_heatflux
+      INTEGER  :: n_levs
 
-      AED_REAL,DIMENSION(:),ALLOCATABLE :: z_colnums
-      AED_REAL,DIMENSION(:),ALLOCATABLE :: z_ss1
-      AED_REAL,DIMENSION(:),ALLOCATABLE :: z_ss2
-      AED_REAL,DIMENSION(:),ALLOCATABLE :: z_ss3
-      AED_REAL,DIMENSION(:),ALLOCATABLE :: z_ss4
-      AED_REAL,DIMENSION(:),ALLOCATABLE :: z_wind
-      AED_REAL,DIMENSION(:),ALLOCATABLE :: z_air_temp
-      AED_REAL,DIMENSION(:),ALLOCATABLE :: z_air_pres
-      AED_REAL,DIMENSION(:),ALLOCATABLE :: z_rain
-      AED_REAL,DIMENSION(:),ALLOCATABLE :: z_rainloss
-      AED_REAL,DIMENSION(:),ALLOCATABLE :: z_humidity
-      AED_REAL,DIMENSION(:),ALLOCATABLE :: z_bathy
-      AED_REAL,DIMENSION(:),ALLOCATABLE :: z_I_0
-      AED_REAL,DIMENSION(:),ALLOCATABLE :: z_coldepth
-      AED_REAL,DIMENSION(:),ALLOCATABLE :: z_longwave
+      TYPE(api_zone_env_t),DIMENSION(:),ALLOCATABLE :: z_env
 
       AED_REAL,DIMENSION(:,:),POINTER :: z_cc         !(n_levs, n_vars)
       AED_REAL,DIMENSION(:),  POINTER :: z_cc_hz      !(2, n_vars_ben)
@@ -139,13 +155,8 @@ MODULE aed_zones
    !----------------------------------------------------------------------------
 
    PROCEDURE(calc_zone_areas_t),POINTER :: p_calc_zone_areas
-   PROCEDURE(copy_to_zone_t),POINTER    :: p_copy_to_zone
-   PROCEDURE(copy_from_zone_t),POINTER  :: p_copy_from_zone
-
-   PUBLIC api_zone_t, aed_init_zones, api_set_zone_funcs
-   PUBLIC aedZones, aed_n_zones
-   PUBLIC p_calc_zone_areas, p_copy_to_zone, p_copy_from_zone
-   PUBLIC calc_zone_areas_t, copy_to_zone_t, copy_from_zone_t
+   PROCEDURE(copy_to_zone_t),   POINTER :: p_copy_to_zone
+   PROCEDURE(copy_from_zone_t), POINTER :: p_copy_from_zone
 
 CONTAINS
 
@@ -171,26 +182,7 @@ SUBROUTINE aed_init_zones(n_zones, n_levs, z_cc, z_cc_hz, z_diag, z_diag_hz)
 
    DO zon=1,n_zones
       aedZones(zon)%n_levs = n_levs
-      ALLOCATE(aedZones(zon)%z_temp(n_levs))
-      ALLOCATE(aedZones(zon)%z_salt(n_levs))
-      ALLOCATE(aedZones(zon)%z_heights(n_levs))
-      ALLOCATE(aedZones(zon)%z_rad(n_levs))
-      ALLOCATE(aedZones(zon)%z_rho(n_levs))
-      ALLOCATE(aedZones(zon)%z_area(n_levs))
-      ALLOCATE(aedZones(zon)%z_extc(n_levs))
-      ALLOCATE(aedZones(zon)%z_layer_stress(n_levs))
-      ALLOCATE(aedZones(zon)%z_tss(n_levs))
-      ALLOCATE(aedZones(zon)%z_dz(n_levs))
-      ALLOCATE(aedZones(zon)%z_vel(n_levs))
-      ALLOCATE(aedZones(zon)%z_par(n_levs))
-      ALLOCATE(aedZones(zon)%z_nir(n_levs))
-      ALLOCATE(aedZones(zon)%z_uva(n_levs))
-      ALLOCATE(aedZones(zon)%z_uvb(n_levs))
-      ALLOCATE(aedZones(zon)%z_pres(n_levs))
-      ALLOCATE(aedZones(zon)%z_depth(n_levs))
-      ALLOCATE(aedZones(zon)%z_sed_zones(n_levs))
-      ALLOCATE(aedZones(zon)%z_pc_wet(n_levs))
-      ALLOCATE(aedZones(zon)%z_heatflux(n_levs))
+      ALLOCATE(aedZones(zon)%z_env(n_levs))
 
       aedZones(zon)%z_cc => z_cc(zon, :, :)
       aedZones(zon)%z_cc_hz => z_cc_hz(zon, :)
