@@ -1640,7 +1640,7 @@ CONTAINS
          flux_pel_pre = flux_pel
 
 !        print*,"Calling ben for zone ",zone_var,zon,z_sed_zones(zon)
-         CALL aed_calculate_benthic(column_sed, 1, .TRUE., zon)  !CAB???
+         CALL aed_calculate_benthic_zone(column_sed, 1, zon)  !CAB???
 
          !# Record benthic fluxes in the zone array
          flux_zon(zon, :) = flux_ben(:)
