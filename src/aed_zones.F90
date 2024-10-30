@@ -53,11 +53,12 @@ MODULE aed_zones
    !# Structured type for Zones environment
    TYPE :: api_zone_env_t
       AED_REAL :: z_height
-      AED_REAL :: z_area
-      AED_REAL :: z_pc_wet
       AED_REAL :: z_dz
+      AED_REAL :: z_area
       AED_REAL :: z_depth
       AED_REAL :: z_col_depth
+
+      AED_REAL :: z_pc_wet
       AED_REAL :: z_colnums
 
       AED_REAL :: z_temp
@@ -65,21 +66,23 @@ MODULE aed_zones
       AED_REAL :: z_rho
       AED_REAL :: z_rad
       AED_REAL :: z_extc
-      AED_REAL :: z_layer_stress
-      AED_REAL :: z_tss
       AED_REAL :: z_vel
       AED_REAL :: z_pres
-      AED_REAL :: z_sed_zones
       AED_REAL :: z_heatflux
 
+      AED_REAL :: z_tss
       AED_REAL :: z_ss1
       AED_REAL :: z_ss2
       AED_REAL :: z_ss3
       AED_REAL :: z_ss4
+
+      AED_REAL :: z_layer_stress
+      AED_REAL :: z_sed_zones
       AED_REAL :: z_wind
       AED_REAL :: z_air_temp
       AED_REAL :: z_air_pres
       AED_REAL :: z_rain
+      AED_REAL :: z_evap
       AED_REAL :: z_rainloss
       AED_REAL :: z_humidity
       AED_REAL :: z_bathy
