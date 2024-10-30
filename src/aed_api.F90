@@ -76,6 +76,8 @@ MODULE aed_api
    !#===========================================================#!
 
    !#===========================================================#!
+   !* A structure to pass configuration values to AED           *!
+   !*-----------------------------------------------------------*!
    TYPE api_config_t
       INTEGER  :: MaxLayers
       INTEGER  :: MaxColumns
@@ -88,7 +90,7 @@ MODULE aed_api
       LOGICAL  :: link_bottom_drag
       LOGICAL  :: ice
 
-      INTEGER  :: split_factor = 1
+      INTEGER  :: split_factor = 1 !# not sure we need this anymore
       INTEGER  :: benthic_mode = 1
 
       AED_REAL :: rain_factor = 1.
@@ -105,15 +107,19 @@ MODULE aed_api
    !#===========================================================#!
 
    !#===========================================================#!
+   !* A structure to pass data array pointers to AED            *!
+   !*-----------------------------------------------------------*!
    TYPE api_data_t
-      AED_REAL,DIMENSION(:,:),POINTER :: cc         => null()
-      AED_REAL,DIMENSION(:),  POINTER :: cc_hz      => null()
-      AED_REAL,DIMENSION(:,:),POINTER :: cc_diag    => null()
-      AED_REAL,DIMENSION(:),  POINTER :: cc_diag_hz => null()
+      AED_REAL,DIMENSION(:,:),POINTER :: cc         => null()  !# (nlayers,nvars)
+      AED_REAL,DIMENSION(:),  POINTER :: cc_hz      => null()  !# (nbenvars)
+      AED_REAL,DIMENSION(:,:),POINTER :: cc_diag    => null()  !# (nlayers,ndiagvars)
+      AED_REAL,DIMENSION(:),  POINTER :: cc_diag_hz => null()  !# (ndiagbenvars)
    END TYPE api_data_t
    !#===========================================================#!
 
    !#===========================================================#!
+   !* A structure to pass environment array pointers to AED     *!
+   !*-----------------------------------------------------------*!
    TYPE api_env_t
       AED_REAL,DIMENSION(:),POINTER :: height       => null() !# layer height (previously "h")
       AED_REAL,DIMENSION(:),POINTER :: area         => null() !# layer area
@@ -125,7 +131,7 @@ MODULE aed_api
       AED_REAL,DIMENSION(:),POINTER :: salt         => null() !# salinity
       AED_REAL,DIMENSION(:),POINTER :: rho          => null() !# density
       AED_REAL,DIMENSION(:),POINTER :: rad          => null()
-      AED_REAL,DIMENSION(:),POINTER :: tss          => null()
+      AED_REAL,DIMENSION(:),POINTER :: tss          => null() !# total suspended solids
       AED_REAL,DIMENSION(:),POINTER :: ss1          => null()
       AED_REAL,DIMENSION(:),POINTER :: ss2          => null()
       AED_REAL,DIMENSION(:),POINTER :: ss3          => null()
