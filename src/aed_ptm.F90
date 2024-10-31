@@ -32,10 +32,10 @@
 
 #include "aed_api.h"
 
-#define CINTEGER INTEGER(kind=C_INT32_T)
-#define CSIZET   INTEGER(kind=C_SIZE_T)
-#define CLOGICAL LOGICAL(kind=C_BOOL)
-#define CCHARACTER CHARACTER(C_CHAR)
+!#define CINTEGER INTEGER(kind=C_INT32_T)
+!#define CSIZET   INTEGER(kind=C_SIZE_T)
+!#define CLOGICAL LOGICAL(kind=C_BOOL)
+!#define CCHARACTER CHARACTER(C_CHAR)
 
 MODULE aed_ptm
 
