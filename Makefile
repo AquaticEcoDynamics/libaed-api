@@ -40,18 +40,6 @@ INCLUDES+=-I${AEDWATDIR}/include -I${incdir} -I${AEDWATDIR}/mod
 
 include ../libaed-water/make_defs.inc
 
-OBJS=${objdir}/aed_bivalve.o \
-     ${objdir}/aed_habitat_benthic.o \
-     ${objdir}/aed_habitat_ruppia.o \
-     ${objdir}/aed_habitat_chara.o \
-     ${objdir}/aed_habitat_galaxiid.o \
-     ${objdir}/aed_habitat_seagrass.o \
-     ${objdir}/aed_macroalgae.o \
-     ${objdir}/aed_macroalgae2.o \
-     ${objdir}/aed_macrophyte.o \
-     ${objdir}/aed_benthic.o
-
-
 EXTFLAG=
 ifneq ($(AEDBENDIR),)
   LIBAEDBBEN=aed-benthic
@@ -81,6 +69,7 @@ else
 endif
 
 OBJS=${objdir}/aed_zones.o \
+     ${objdir}/aed_ptm.o   \
      ${objdir}/aed_api.o
 
 #ifeq ($(EXTERNAL_LIBS),shared)

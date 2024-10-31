@@ -13,14 +13,14 @@
 !#                                                                             #
 !# Copyright 2024 - The University of Western Australia                        #
 !#                                                                             #
-!#  This file is part of GLM (General Lake Model)                              #
+!#  This file is part of libaed (Library for AquaticEco Dynamics)              #
 !#                                                                             #
-!#  GLM is free software: you can redistribute it and/or modify                #
+!#  AED is free software: you can redistribute it and/or modify                #
 !#  it under the terms of the GNU General Public License as published by       #
 !#  the Free Software Foundation, either version 3 of the License, or          #
 !#  (at your option) any later version.                                        #
 !#                                                                             #
-!#  GLM is distributed in the hope that it will be useful,                     #
+!#  AED is distributed in the hope that it will be useful,                     #
 !#  but WITHOUT ANY WARRANTY; without even the implied warranty of             #
 !#  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the              #
 !#  GNU General Public License for more details.                               #
