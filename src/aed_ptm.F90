@@ -52,18 +52,18 @@ MODULE aed_ptm
 
    !#===========================================================#!
    TYPE :: aed_part_group_t
-      CINTEGER :: num_particles                     !# Number of particles
-      CINTEGER :: id_stat, id_i2, id_i3, id_layer   !# Particle ISTAT Index Values
-      CINTEGER :: id_bed_layer, id_motility         !# Particle ISTAT Index Values
-      CINTEGER :: id_uvw0, id_uvw, id_nu, id_wnd    !# Particle PROP Index Values
-      CINTEGER :: id_wsel, id_watd, id_partd        !# Particle PROP Index Values
-      CINTEGER :: id_age, id_state                  !# Particle TSTAT Index Values
-      CINTEGER :: i_next                            !# next particle index
-      CINTEGER :: istat                             !# particle integer status/Cell-index variables (4,NPart)
-      AED_REAL,DIMENSION(:,:),POINTER :: age        !# particle time/age vector (2,Npart)
-      AED_REAL,DIMENSION(:,:),POINTER :: posn       !# particle position vector
-      AED_REAL,DIMENSION(:,:),POINTER :: prop       !# particle property vector (12,Npart)
-      AED_REAL,DIMENSION(:,:),POINTER :: U          !# particle conserved variable vector (NU,NP)
+      CINTEGER :: num_particles                      !# Number of particles
+      CINTEGER :: idx_stat, idx_2, idx_3, idx_layer  !# Particle ISTAT Index Values
+      CINTEGER :: idx_bed_layer, idx_motility        !# Particle ISTAT Index Values
+      CINTEGER :: idx_uvw0, idx_uvw, idx_nu, idx_wnd !# Particle PROP Index Values
+      CINTEGER :: idx_wsel, idx_watd, idx_partd      !# Particle PROP Index Values
+      CINTEGER :: idx_age, idx_state                 !# Particle TSTAT Index Values
+      CINTEGER :: next                               !# next particle index
+      CINTEGER :: stat                               !# particle status
+      AED_REAL,DIMENSION(:,:),POINTER :: age         !# particle time/age vector (2,Npart)
+      AED_REAL,DIMENSION(:,:),POINTER :: posn        !# particle position vector
+      AED_REAL,DIMENSION(:,:),POINTER :: prop        !# particle property vector (12,Npart)
+      AED_REAL,DIMENSION(:,:),POINTER :: U           !# particle conserved variable vector (NU,NP)
    ENDTYPE aed_part_group_t
 
 !  TYPE :: partgroup_p
