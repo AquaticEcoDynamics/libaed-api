@@ -9,7 +9,7 @@
 #                                                                             #
 #      http://aquatic.science.uwa.edu.au/                                     #
 #                                                                             #
-#  Copyright 2024 -  The University of Western Australia                      #
+#  Copyright 2024 - The University of Western Australia                       #
 #                                                                             #
 #   AED is free software: you can redistribute it and/or modify               #
 #   it under the terms of the GNU General Public License as published by      #
@@ -27,7 +27,7 @@
 ###############################################################################
 
 LIBAEDAPI=aed-api
-OUTLIB=lib$(LIBAEDAPI)
+APILIB=lib$(LIBAEDAPI)
 
 VERSION=$(shell grep AED_API_VERSION include/aed_api.h | head -1 | cut -f2 -d\")
 
@@ -40,45 +40,67 @@ INCLUDES+=-I${AEDWATDIR}/include -I${incdir} -I${AEDWATDIR}/mod
 
 include ../libaed-water/make_defs.inc
 
-EXTFLAG=
+EXTFFLAGS=
+#EXTFFLAGS=-DNO_RIPARIAN -DNO_LGT -DNO_DEV
 ifneq ($(AEDBENDIR),)
   LIBAEDBBEN=aed-benthic
   SOFLAGS+=${AEDBENDIR}/lib/lib${LIBAEDBEN}.a
-endif
-ifneq ($(AEDRIPDIR),)
-  LIBAEDBRIP=aed-riparian
-  SOFLAGS+=${AEDRIPDIR}/lib/lib${LIBAEDRIP}.a
-else
-  EXTFLAG+=-DNO_RIPARIAN
 endif
 ifneq ($(AEDDMODIR),)
   LIBAEDBDMO=aed-demo
   SOFLAGS+=${AEDDMODIR}/lib/lib${LIBAEDDMO}.a
 endif
+ifneq ($(AEDRIPDIR),)
+  LIBAEDBRIP=aed-riparian
+  SOFLAGS+=${AEDRIPDIR}/lib/lib${LIBAEDRIP}.a
+else
+  EXTFFLAGS+=-DNO_RIPARIAN
+endif
 ifneq ($(AEDLGTDIR),)
   LIBAEDBLGT=aed-lighting
   SOFLAGS+=${AEDLGTDIR}/lib/lib${LIBAEDLGT}.a
 else
-  EXTFLAG+=-DNO_LGT
+  EXTFFLAGS+=-DNO_LGT
 endif
 ifneq ($(AEDDEVDIR),)
   LIBAEDBDEV=aed-dev
   SOFLAGS+=${AEDDEVDIR}/lib/lib${LIBAEDDEV}.a
 else
-  EXTFLAG+=-DNO_DEV
+  EXTFFLAGS+=-DNO_DEV
 endif
 
 OBJS=${objdir}/aed_zones.o \
      ${objdir}/aed_ptm.o   \
      ${objdir}/aed_api.o
 
-#ifeq ($(EXTERNAL_LIBS),shared)
-#  FFLAGS+=-fPIC
-#  TARGET = ${libdir}/$(OUTLIB).${so_ext}
-#else
+#WOBJS=$(shell ar t ../libaed-water/lib/libaed-water.a | sed -e 's!^!../libaed-water/obj/!')
+#BOBJS=$(shell ar t ../libaed-benthic/lib/libaed-benthic.a | sed -e 's!^!../libaed-benthic/obj/!')
+#DOBJS=$(shell ar t ../libaed-demo/lib/libaed-demo.a | sed -e 's!^!../libaed-demo/obj/!')
+
+#OBJS+=${WOBJS} ${BOBJS} ${DOBJS}
+
+ifeq ($(EXTERNAL_LIBS),shared)
+# FFLAGS+=-fPIC
+  TARGET = ${libdir}/$(APILIB).${so_ext}
+else
 #  FFLAGS+=-fPIE
-#  TARGET = ${libdir}/$(OUTLIB).a
-#endif
+   TARGET = ${libdir}/$(APILIB).a
+endif
+
+#LIBS=${SOFLAGS}
+#LIBS=../libaed-water/lib/libaed-water.a ../libaed-benthic/lib/libaed-benthic.a ../libaed-demo/lib/libaed-demo.a
 
 include ../libaed-water/make_rules.inc
+
+${objdir}/aed_external.o: ../libaed-water/src/aed_external.F90
+	$(FC) $(FFLAGS) $(EXTFFLAGS) -D_FORTRAN_SOURCE_ $(OMPFLAG) -c $< -o $@
+
+${libdir}/${APILIB}.${so_ext}: ${libdir}/${APILIB}.a
+	$(F90) ${SHARED} -o $@.${SOVERS}.${VERS} ${OBJS} ${LDFLAGS} ${SOFLAGS}
+	ln -sf ${APILIB}.${so_ext}.${SOVERS}.${VERS} $@
+	ln -sf ${APILIB}.${so_ext}.${SOVERS}.${VERS} $@.${SOVERS}
+
+${libdir}/$(APILIB).a: ${objdir} ${moddir} ${libdir} ${OBJS} ${LIBS} # ${objdir}/aed_external.o
+	ar rv $@ ${OBJS} ${LIBS} # ${objdir}/aed_external.o
+	ranlib $@
 
