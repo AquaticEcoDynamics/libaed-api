@@ -2,7 +2,7 @@
 !#                                                                             #
 !# aed_api.F90                                                                 #
 !#                                                                             #
-!# A generic interface between model and libaed-xxx                            #
+!# A generic interface between models and libaed-xxx                           #
 !#                                                                             #
 !# Developed by :                                                              #
 !#     AquaticEcoDynamics (AED) Group                                          #
@@ -93,16 +93,16 @@ MODULE aed_api
       INTEGER  :: split_factor = 1 !# not sure we need this anymore
       INTEGER  :: benthic_mode = 1
 
-      AED_REAL :: rain_factor = 1.
-      AED_REAL :: sw_factor = 1.
-      AED_REAL :: friction = 1.
+      AED_REAL :: rain_factor  = 1.
+      AED_REAL :: sw_factor    = 1.
+      AED_REAL :: friction     = 1.
 
       AED_REAL :: Kw
 
-      AED_REAL :: nir_fraction =  0.52   ! 0.51
-      AED_REAL :: par_fraction =  0.43   ! 0.45
-      AED_REAL :: uva_fraction =  0.048  ! 0.035
-      AED_REAL :: uvb_fraction =  0.002  ! 0.005
+      AED_REAL :: nir_fraction = 0.52   ! 0.51
+      AED_REAL :: par_fraction = 0.43   ! 0.45
+      AED_REAL :: uva_fraction = 0.048  ! 0.035
+      AED_REAL :: uvb_fraction = 0.002  ! 0.005
    END TYPE api_config_t
    !#===========================================================#!
 
@@ -162,14 +162,14 @@ MODULE aed_api
       AED_REAL,DIMENSION(:),POINTER :: uva          => null()
       AED_REAL,DIMENSION(:),POINTER :: uvb          => null()
 
-      INTEGER, DIMENSION(:,:),POINTER :: mat_id => null()
-      LOGICAL, DIMENSION(:),  POINTER :: active => null()
+      INTEGER, DIMENSION(:,:),POINTER :: mat_id     => null()
+      LOGICAL, DIMENSION(:),  POINTER :: active     => null()
 
-      AED_REAL,POINTER :: longitude => null()
-      AED_REAL,POINTER :: latitude  => null()
+      AED_REAL,POINTER :: longitude                 => null()
+      AED_REAL,POINTER :: latitude                  => null()
 
-      AED_REAL,POINTER :: yearday  => null()
-      AED_REAL,POINTER :: timestep => null()
+      AED_REAL,POINTER :: yearday                   => null()
+      AED_REAL,POINTER :: timestep                  => null()
    END TYPE api_env_t
    !#===========================================================#!
 
@@ -1086,7 +1086,7 @@ SUBROUTINE check_states(column, col, wlev)
                v = v + 1
                IF ( repair_state ) THEN
 #if DEBUG
-                  IF ( isnan(cc(lev, v)) ) last_naned = i
+                  IF ( isnan(data(col)%cc(lev, v)) ) last_naned = i
 #endif
                   IF ( .NOT. isnan(min_(v)) ) THEN
                      IF ( data(col)%cc(lev, v) < min_(v) ) data(col)%cc(lev, v) = min_(v)
@@ -1313,7 +1313,7 @@ CONTAINS
       !# be inline with current aed_phyoplankton, which requires only
       !# surface par, then integrates over depth of a layer
       IF (.NOT. link_ext_par) &
-         CALL update_light(column, wlev, col)
+         CALL update_light(column, col, wlev)
 
       !# Fudge
       data(col)%nir(:) = (data(col)%par(:)/par_fraction) * nir_fraction
@@ -1882,14 +1882,14 @@ END SUBROUTINE aed_run_model
 
 
 !###############################################################################
-SUBROUTINE update_light(column, nlev, col)
+SUBROUTINE update_light(column, col, nlev)
 !-------------------------------------------------------------------------------
 ! Calculate photosynthetically active radiation over entire column based
 ! on surface radiation, attenuated based on background & biotic extinction
 !-------------------------------------------------------------------------------
 !ARGUMENTS
    TYPE (aed_column_t),INTENT(inout) :: column(:)
-   INTEGER,INTENT(in) :: nlev, col
+   INTEGER,INTENT(in) :: col, nlev
 !
 !LOCALS
    INTEGER :: i
