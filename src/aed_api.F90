@@ -696,13 +696,13 @@ SUBROUTINE aed_set_model_env(env, ncols)
       data(col)%sed_zones    => env(col)%sed_zones
       data(col)%pres         => env(col)%pres
 
-      data(col)%par => env(col)%par
-      data(col)%nir => env(col)%nir
-      data(col)%uva => env(col)%uva
-      data(col)%uvb => env(col)%uvb
+      data(col)%par          => env(col)%par
+      data(col)%nir          => env(col)%nir
+      data(col)%uva          => env(col)%uva
+      data(col)%uvb          => env(col)%uvb
 
-      mat_id => env(col)%mat_id
-      active => env(col)%active
+      mat_id                 => env(col)%mat_id
+      active                 => env(col)%active
    ENDDO
 
    IF (BSSOCIATED(temp))           tv=aed_provide_global('temperature','temperature',           'celsius')
@@ -736,6 +736,7 @@ SUBROUTINE aed_set_model_env(env, ncols)
    IF (BSSOCIATED(bathy))          tv=aed_provide_sheet_global('bathy',         'bathy',             'm above datum' )
    IF (BSSOCIATED(rainloss))       tv=aed_provide_sheet_global('rainloss',      'rain loss',         'm/s'           )
    IF (BSSOCIATED(layer_stress))   tv=aed_provide_sheet_global('taub',          'layer stress',      'N/m2'          )
+
    IF (BSSOCIATED(sed_zones))      tv=aed_provide_sheet_global('sed_zone',      'sediment zone',     '-'             )
 
    IF (BSSOCIATED(col_depth))      tv=aed_provide_sheet_global('col_depth',     'column water depth','m above bottom')
@@ -1181,24 +1182,23 @@ CONTAINS
       LOGICAL,INTENT(in) :: doSurface
    !
    !LOCALS
-      INTEGER  :: v, lev, zon=1, split
-      AED_REAL :: pa = 0.
+      INTEGER  :: v, lev, zon, split
+ !    AED_REAL :: pa = 0.
    !
    !----------------------------------------------------------------------------
    !BEGIN
-      IF ( benthic_mode .GT. 1 ) THEN
-         zon = 1
-         DO lev=1,wlev
-!           print *,'zone_heights',height(lev),zone_height(zon),aedZones(1)%zheight,aedZones(2)%zheight
-            IF (data(col)%lheights(lev) .GT. aedZones(zon)%z_env(1)%z_height) THEN  !CAB ???
-               data(col)%sed_zones(lev) = zon * ( data(col)%area(lev) - pa ) / data(col)%area(lev)
-               pa = data(col)%area(lev)
-               zon = zon+1
-            ELSE
-               data(col)%sed_zones(lev) = zon
-            ENDIF
-         ENDDO
-      ENDIF
+ !    IF ( benthic_mode .GT. 1 ) THEN
+ !       zon = 1
+ !       DO lev=1,wlev
+ !          IF (data(col)%lheights(lev) .GT. aedZones(zon)%z_env(1)%z_height) THEN  !CAB ???
+ !             data(col)%sed_zones(lev) = zon * ( data(col)%area(lev) - pa ) / data(col)%area(lev)
+ !             pa = data(col)%area(lev)
+ !             zon = zon+1
+ !          ELSE
+ !             data(col)%sed_zones(lev) = zon
+ !          ENDIF
+ !       ENDDO
+ !    ENDIF
 
       DO split=1,split_factor
          IF (benthic_mode .GT. 1) THEN
