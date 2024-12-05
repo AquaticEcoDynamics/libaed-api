@@ -5,3 +5,5 @@ mod
 .DS*
 ._.DS*
 *.i90
+*.diff
+CMakeLists.txt

@@ -38,7 +38,6 @@
 #  endif
 #endif
 
-
 #define GLM_VARIANT   1
 #define TFV_VARIANT   0
 
@@ -55,6 +54,9 @@ MODULE aed_api
    IMPLICIT NONE
 
    PRIVATE ! By default, make everything private
+!
+!
+!-------------------------------------------------------------------------------
 !
    PUBLIC aed_init_model,       &
           aed_run_model,        &
@@ -125,7 +127,6 @@ MODULE aed_api
       AED_REAL,DIMENSION(:),POINTER :: area         => null() !# layer area
       AED_REAL,DIMENSION(:),POINTER :: dz           => null() !# layer thickness
       AED_REAL,DIMENSION(:),POINTER :: depth        => null() !# layer_depth (previously "z")
-      AED_REAL,DIMENSION(:),POINTER :: col_depth    => null() !# col_depth (sheet - total depth of column)
 
       AED_REAL,DIMENSION(:),POINTER :: temp         => null() !# temperature
       AED_REAL,DIMENSION(:),POINTER :: salt         => null() !# salinity
@@ -139,24 +140,30 @@ MODULE aed_api
       AED_REAL,DIMENSION(:),POINTER :: cvel         => null() !# cell velocity
       AED_REAL,DIMENSION(:),POINTER :: vvel         => null() !# vertical velocity
       AED_REAL,DIMENSION(:),POINTER :: bio_drag     => null()
-      AED_REAL,DIMENSION(:),POINTER :: I_0          => null() !# par_sf
-      AED_REAL,DIMENSION(:),POINTER :: wind         => null()
-      AED_REAL,DIMENSION(:),POINTER :: air_temp     => null()
-      AED_REAL,DIMENSION(:),POINTER :: air_pres     => null()
-      AED_REAL,DIMENSION(:),POINTER :: rain         => null()
-      AED_REAL,DIMENSION(:),POINTER :: evap         => null()
-      AED_REAL,DIMENSION(:),POINTER :: humidity     => null()
-      AED_REAL,DIMENSION(:),POINTER :: longwave     => null()
-      AED_REAL,DIMENSION(:),POINTER :: bathy        => null()
-      AED_REAL,DIMENSION(:),POINTER :: rainloss     => null()
       AED_REAL,DIMENSION(:),POINTER :: ustar_bed    => null()
       AED_REAL,DIMENSION(:),POINTER :: wv_uorb      => null()
       AED_REAL,DIMENSION(:),POINTER :: wv_t         => null()
-      AED_REAL,DIMENSION(:),POINTER :: layer_stress => null()
       AED_REAL,DIMENSION(:),POINTER :: pres         => null()
-      AED_REAL,DIMENSION(:),POINTER :: sed_zones    => null()
-
       AED_REAL,DIMENSION(:),POINTER :: extc         => null() !# extinction coefficient
+
+      !# sedzones are an odd mix - for GLM a zone will be different at
+      !# different levels - while for others a column would be all int one zone
+      AED_REAL,DIMENSION(:),POINTER :: sed_zones    => null()
+      AED_REAL,POINTER :: sed_zone     => null()
+
+      AED_REAL,POINTER :: I_0          => null() !# par_sf
+      AED_REAL,POINTER :: wind         => null()
+      AED_REAL,POINTER :: air_temp     => null()
+      AED_REAL,POINTER :: air_pres     => null()
+      AED_REAL,POINTER :: rain         => null()
+      AED_REAL,POINTER :: evap         => null()
+      AED_REAL,POINTER :: humidity     => null()
+      AED_REAL,POINTER :: longwave     => null()
+      AED_REAL,POINTER :: bathy        => null()
+      AED_REAL,POINTER :: rainloss     => null()
+      AED_REAL,POINTER :: layer_stress => null()
+      AED_REAL,POINTER :: col_depth    => null() !# col_depth (sheet - total depth of column)
+
       AED_REAL,DIMENSION(:),POINTER :: par          => null()
       AED_REAL,DIMENSION(:),POINTER :: nir          => null()
       AED_REAL,DIMENSION(:),POINTER :: uva          => null()
@@ -176,16 +183,15 @@ MODULE aed_api
    !#===========================================================#!
    TYPE api_col_data_t
       !# Main arrays storing/pointing to the state and diagnostic variables
-      AED_REAL,DIMENSION(:,:),POINTER :: cc         => null()
-      AED_REAL,DIMENSION(:),  POINTER :: cc_hz      => null()
-      AED_REAL,DIMENSION(:,:),POINTER :: cc_diag    => null()
-      AED_REAL,DIMENSION(:),  POINTER :: cc_diag_hz => null()
+      AED_REAL,DIMENSION(:,:),POINTER :: cc         => null()  !# (nlayers,nvars)
+      AED_REAL,DIMENSION(:),  POINTER :: cc_hz      => null()  !# (nbenvars)
+      AED_REAL,DIMENSION(:,:),POINTER :: cc_diag    => null()  !# (nlayers,ndiagvars)
+      AED_REAL,DIMENSION(:),  POINTER :: cc_diag_hz => null()  !# (ndiagbenvars)
 
-      AED_REAL,DIMENSION(:),POINTER :: lheights     => null()
+      AED_REAL,DIMENSION(:),POINTER :: lheights     => null()  !# (nlayers)
       AED_REAL,DIMENSION(:),POINTER :: dz           => null()
       AED_REAL,DIMENSION(:),POINTER :: area         => null()
       AED_REAL,DIMENSION(:),POINTER :: depth        => null()
-      AED_REAL,DIMENSION(:),POINTER :: col_depth    => null()
 
       AED_REAL,DIMENSION(:),POINTER :: temp         => null()
       AED_REAL,DIMENSION(:),POINTER :: salt         => null()
@@ -202,27 +208,32 @@ MODULE aed_api
       AED_REAL,DIMENSION(:),POINTER :: ss3          => null()
       AED_REAL,DIMENSION(:),POINTER :: ss4          => null()
 
-      AED_REAL,DIMENSION(:),POINTER :: layer_stress => null()
-      AED_REAL,DIMENSION(:),POINTER :: sed_zones    => null()
-      AED_REAL,DIMENSION(:),POINTER :: wind         => null()
-      AED_REAL,DIMENSION(:),POINTER :: air_temp     => null()
-      AED_REAL,DIMENSION(:),POINTER :: air_pres     => null()
-      AED_REAL,DIMENSION(:),POINTER :: rain         => null()
-      AED_REAL,DIMENSION(:),POINTER :: evap         => null()
-      AED_REAL,DIMENSION(:),POINTER :: rainloss     => null()
-      AED_REAL,DIMENSION(:),POINTER :: humidity     => null()
-      AED_REAL,DIMENSION(:),POINTER :: bathy        => null()
-      AED_REAL,DIMENSION(:),POINTER :: I_0          => null()
-      AED_REAL,DIMENSION(:),POINTER :: longwave     => null()
+      AED_REAL,DIMENSION(:),POINTER :: nir          => null()
+      AED_REAL,DIMENSION(:),POINTER :: par          => null()
+      AED_REAL,DIMENSION(:),POINTER :: uva          => null()
+      AED_REAL,DIMENSION(:),POINTER :: uvb          => null()
+
       AED_REAL,DIMENSION(:),POINTER :: ustar_bed    => null()
       AED_REAL,DIMENSION(:),POINTER :: wv_uorb      => null()
       AED_REAL,DIMENSION(:),POINTER :: wv_t         => null()
       AED_REAL,DIMENSION(:),POINTER :: vvel         => null()  !# vertical velocity
 
-      AED_REAL,DIMENSION(:),POINTER :: nir          => null()
-      AED_REAL,DIMENSION(:),POINTER :: par          => null()
-      AED_REAL,DIMENSION(:),POINTER :: uva          => null()
-      AED_REAL,DIMENSION(:),POINTER :: uvb          => null()
+      AED_REAL,DIMENSION(:),POINTER :: sed_zones    => null()
+      AED_REAL,POINTER :: sed_zone     => null()
+
+      !# These are sheet vars
+      AED_REAL,POINTER :: col_depth    => null()
+      AED_REAL,POINTER :: I_0          => null()
+      AED_REAL,POINTER :: wind         => null()
+      AED_REAL,POINTER :: air_temp     => null()
+      AED_REAL,POINTER :: air_pres     => null()
+      AED_REAL,POINTER :: rain         => null()
+      AED_REAL,POINTER :: evap         => null()
+      AED_REAL,POINTER :: humidity     => null()
+      AED_REAL,POINTER :: longwave     => null()
+      AED_REAL,POINTER :: bathy        => null()
+      AED_REAL,POINTER :: rainloss     => null()
+      AED_REAL,POINTER :: layer_stress => null()
    END TYPE api_col_data_t
    !#===========================================================#!
 
@@ -269,6 +280,8 @@ MODULE aed_api
 !  LOGICAL :: link_water_density = .FALSE.
 !  LOGICAL :: link_water_clarity = .FALSE.
    LOGICAL :: link_ext_par = .FALSE.
+
+!  AED_REAL,DIMENSION(:),POINTER :: sed_zones => null()
 
    !-------------------------------------------------------------
    !# External variables
@@ -451,7 +464,11 @@ INTEGER FUNCTION aed_init_model(fname, NumWQ_Vars, NumWQ_Ben, NumWQ_Diag, NumWQ_
 !-------------------------------------------------------------------------------
 !BEGIN
 #ifdef __INTEL_COMPILER
+#  ifdef __INTEL_LLVM_COMPILER
+   print *,'    aed_api built using intel fortran (ifx) version ', __INTEL_LLVM_COMPILER
+#  else
    print *,'    aed_api built using intel fortran version ', __INTEL_COMPILER
+#  endif
 #else
 # ifdef __GNUC__
    print *,'    aed_api built using gfortran version ', __GNUC__, '.', __GNUC_MINOR__, '.', __GNUC_PATCHLEVEL__
@@ -668,7 +685,6 @@ SUBROUTINE aed_set_model_env(env, ncols)
       data(col)%lheights     => env(col)%height
       data(col)%area         => env(col)%area
       data(col)%depth        => env(col)%depth
-      data(col)%col_depth    => env(col)%col_depth
       data(col)%extc         => env(col)%extc
       data(col)%tss          => env(col)%tss
       data(col)%ss1          => env(col)%ss1
@@ -679,6 +695,11 @@ SUBROUTINE aed_set_model_env(env, ncols)
       data(col)%vvel         => env(col)%vvel
       data(col)%bio_drag     => env(col)%bio_drag
       data(col)%rad          => env(col)%rad
+      data(col)%ustar_bed    => env(col)%ustar_bed
+      data(col)%wv_uorb      => env(col)%wv_uorb
+      data(col)%wv_t         => env(col)%wv_t
+      data(col)%pres         => env(col)%pres
+
       data(col)%I_0          => env(col)%I_0
       data(col)%wind         => env(col)%wind
       data(col)%air_temp     => env(col)%air_temp
@@ -689,12 +710,10 @@ SUBROUTINE aed_set_model_env(env, ncols)
       data(col)%longwave     => env(col)%longwave
       data(col)%bathy        => env(col)%bathy
       data(col)%rainloss     => env(col)%rainloss
-      data(col)%ustar_bed    => env(col)%ustar_bed
-      data(col)%wv_uorb      => env(col)%wv_uorb
-      data(col)%wv_t         => env(col)%wv_t
+      data(col)%col_depth    => env(col)%col_depth
       data(col)%layer_stress => env(col)%layer_stress
       data(col)%sed_zones    => env(col)%sed_zones
-      data(col)%pres         => env(col)%pres
+      data(col)%sed_zone     => env(col)%sed_zone
 
       data(col)%par          => env(col)%par
       data(col)%nir          => env(col)%nir
@@ -720,10 +739,14 @@ SUBROUTINE aed_set_model_env(env, ncols)
    IF (BSSOCIATED(cvel))           tv=aed_provide_global('cell_vel',   'cell velocity',         'm/s'    )
    IF (BSSOCIATED(pres))           tv=aed_provide_global('pressure',   'pressure',              ''       )
 
+   IF (BSSOCIATED(sed_zones))      tv=aed_provide_global('sed_zones',  'sediment zones',        '-'      )
+
    tv=aed_provide_global('nir',        'nir',                   'W/m2'   )
    tv=aed_provide_global('par',        'par',                   'W/m2'   )
    tv=aed_provide_global('uva',        'uva',                   'W/m2'   )
    tv=aed_provide_global('uvb',        'uvb',                   'W/m2'   )
+
+   IF (BSSOCIATED(sed_zone))       tv=aed_provide_sheet_global('sed_zone',  'current sediment zone', '-'             )
 
    IF (BSSOCIATED(I_0))            tv=aed_provide_sheet_global('par_sf',        'par_sf',            'W/m2'          )
    IF (BSSOCIATED(wind))           tv=aed_provide_sheet_global('wind_speed',    'wind speed',        'm/s'           )
@@ -736,8 +759,6 @@ SUBROUTINE aed_set_model_env(env, ncols)
    IF (BSSOCIATED(bathy))          tv=aed_provide_sheet_global('bathy',         'bathy',             'm above datum' )
    IF (BSSOCIATED(rainloss))       tv=aed_provide_sheet_global('rainloss',      'rain loss',         'm/s'           )
    IF (BSSOCIATED(layer_stress))   tv=aed_provide_sheet_global('taub',          'layer stress',      'N/m2'          )
-
-   IF (BSSOCIATED(sed_zones))      tv=aed_provide_sheet_global('sed_zone',      'sediment zone',     '-'             )
 
    IF (BSSOCIATED(col_depth))      tv=aed_provide_sheet_global('col_depth',     'column water depth','m above bottom')
  ! IF (ASSOCIATED(col_num))        tv=aed_provide_sheet_global('col_num',       'column number',     '-'             )
@@ -791,7 +812,8 @@ SUBROUTINE check_data
             CASE ( 'uvb' )         ; tvar%found = BSSOCIATED(uvb)
             CASE ( 'pressure' )    ; tvar%found = BSSOCIATED(pres)
             CASE ( 'depth' )       ; tvar%found = BSSOCIATED(depth)
-            CASE ( 'sed_zone' )    ; tvar%found = BSSOCIATED(sed_zones)
+            CASE ( 'sed_zone' )    ; tvar%found = BSSOCIATED(sed_zone)
+            CASE ( 'sed_zones' )   ; tvar%found = BSSOCIATED(sed_zones)
             CASE ( 'wind_speed' )  ; tvar%found = BSSOCIATED(wind)
             CASE ( 'par_sf' )      ; tvar%found = BSSOCIATED(I_0)
             CASE ( 'taub' )        ; tvar%found = BSSOCIATED(layer_stress)
@@ -892,17 +914,19 @@ SUBROUTINE define_column(column, col, top, flux_pel, flux_atm, flux_ben)
             CASE ( 'uva' )         ; column(av)%cell => data(col)%uva
             CASE ( 'uvb' )         ; column(av)%cell => data(col)%uvb
 
-            CASE ( 'col_depth' )   ; column(av)%cell_sheet => data(col)%col_depth(1)
-            CASE ( 'wind_speed' )  ; column(av)%cell_sheet => data(col)%wind(1)
-            CASE ( 'rain' )        ; column(av)%cell_sheet => data(col)%rain(1)
-            CASE ( 'evap' )        ; column(av)%cell_sheet => data(col)%evap(1)
-            CASE ( 'air_temp' )    ; column(av)%cell_sheet => data(col)%air_temp(1)
-            CASE ( 'air_pres' )    ; column(av)%cell_sheet => data(col)%air_pres(1)
-            CASE ( 'humidity' )    ; column(av)%cell_sheet => data(col)%humidity(1)
-            CASE ( 'par_sf' )      ; column(av)%cell_sheet => data(col)%I_0(1)
+            CASE ( 'sed_zones' )   ; column(av)%cell => data(col)%sed_zones
+            CASE ( 'sed_zone' )    ; column(av)%cell_sheet => data(col)%sed_zone
 
-            CASE ( 'sed_zone' )    ; column(av)%cell_sheet => data(col)%sed_zones(1)
-            CASE ( 'taub' )        ; column(av)%cell_sheet => data(col)%layer_stress(1) ! CAB?
+            CASE ( 'col_depth' )   ; column(av)%cell_sheet => data(col)%col_depth
+            CASE ( 'wind_speed' )  ; column(av)%cell_sheet => data(col)%wind
+            CASE ( 'rain' )        ; column(av)%cell_sheet => data(col)%rain
+            CASE ( 'evap' )        ; column(av)%cell_sheet => data(col)%evap
+            CASE ( 'air_temp' )    ; column(av)%cell_sheet => data(col)%air_temp
+            CASE ( 'air_pres' )    ; column(av)%cell_sheet => data(col)%air_pres
+            CASE ( 'humidity' )    ; column(av)%cell_sheet => data(col)%humidity
+            CASE ( 'par_sf' )      ; column(av)%cell_sheet => data(col)%I_0
+
+            CASE ( 'taub' )        ; column(av)%cell_sheet => data(col)%layer_stress ! CAB?
 
             CASE ( 'longitude' )   ; column(av)%cell_sheet => longitude
             CASE ( 'latitude' )    ; column(av)%cell_sheet => latitude
@@ -1005,7 +1029,10 @@ SUBROUTINE define_column(column, col, cc, cc_diag, flux_pel, flux_atm, flux_ben,
                                      ENDIF
             CASE ( 'uva' )         ; column(av)%cell => uva(top:bot)
             CASE ( 'uvb' )         ; column(av)%cell => uvb(top:bot)
-            CASE ( 'sed_zone' )    ; column(av)%cell_sheet => zone(zm(col))
+
+            CASE ( 'sed_zones' )   ; column(av)%cell_sheet => sed_zones
+     !      CASE ( 'sed_zone' )    ; column(av)%cell_sheet => zone(zm(col))
+            CASE ( 'sed_zone' )    ; column(av)%cell_sheet => sed_zone
             CASE ( 'wind_speed' )  ; column(av)%cell_sheet => data(col)%wind(1)
             CASE ( 'par_sf' )      ; column(av)%cell_sheet => data(col)%I_0(1)
             CASE ( 'taub' )        ; column(av)%cell_sheet => col_taub
@@ -1183,23 +1210,9 @@ CONTAINS
    !
    !LOCALS
       INTEGER  :: v, lev, zon, split
- !    AED_REAL :: pa = 0.
    !
    !----------------------------------------------------------------------------
    !BEGIN
- !    IF ( benthic_mode .GT. 1 ) THEN
- !       zon = 1
- !       DO lev=1,wlev
- !          IF (data(col)%lheights(lev) .GT. aedZones(zon)%z_env(1)%z_height) THEN  !CAB ???
- !             data(col)%sed_zones(lev) = zon * ( data(col)%area(lev) - pa ) / data(col)%area(lev)
- !             pa = data(col)%area(lev)
- !             zon = zon+1
- !          ELSE
- !             data(col)%sed_zones(lev) = zon
- !          ENDIF
- !       ENDDO
- !    ENDIF
-
       DO split=1,split_factor
          IF (benthic_mode .GT. 1) THEN
             CALL p_calc_zone_areas(aedZones, aed_n_zones, data(col)%area, data(col)%lheights, wlev)
@@ -1439,8 +1452,9 @@ CONTAINS
             CASE ( 'pressure' )    ; column(av)%cell => aedZones(zon)%z_env(:)%z_pres
             CASE ( 'depth' )       ; column(av)%cell => aedZones(zon)%z_env(:)%z_depth
             CASE ( 'layer_area' )  ; column(av)%cell => aedZones(zon)%z_env(:)%z_area
+            CASE ( 'sed_zones' )   ; column(av)%cell => aedZones(zon)%z_env(:)%z_sed_zones; zone_var = av
         !   CASE ( 'sed_zone' )    ; column(av)%cell_sheet => aedZones(zon)%z_env(bot)%z_sed_zones; zone_var = av !CAB ??? (bot)
-            CASE ( 'sed_zone' )    ; column(av)%cell_sheet => aedZones(zon)%z_env(1)%z_sed_zones; zone_var = av
+            CASE ( 'sed_zone' )    ; column(av)%cell_sheet => aedZones(zon)%z_env(1)%z_sed_zone; zone_var = av
             CASE ( 'wind_speed' )  ; column(av)%cell_sheet => aedZones(zon)%z_env(1)%z_wind
             CASE ( 'par_sf' )      ; column(av)%cell_sheet => aedZones(zon)%z_env(1)%z_I_0
             CASE ( 'taub' )        ; column(av)%cell_sheet => aedZones(zon)%z_env(1)%z_layer_stress !CAB ??? (bot)
@@ -1960,6 +1974,5 @@ INTEGER FUNCTION aed_var_index(name)
    aed_var_index = -1
 END FUNCTION aed_var_index
 !+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
-
 
 END MODULE aed_api
