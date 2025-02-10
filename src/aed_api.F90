@@ -629,15 +629,17 @@ SUBROUTINE aed_set_model_data(dat, ncols)
    DO av=1,n_aed_vars
       IF ( .NOT.  aed_get_var(av, tvar) ) STOP "     ERROR getting variable info"
       IF ( .NOT. ( tvar%extern .OR. tvar%diag) ) THEN  !# neither global nor diagnostic variable
-         DO col=1,ncols
-            IF ( tvar%sheet ) THEN
-               sv = sv + 1
+         IF ( tvar%sheet ) THEN
+            sv = sv + 1
+            DO col=1,ncols
                data(col)%cc(:, n_vars+sv) = tvar%initial
-            ELSE
-               v = v + 1
+            ENDDO
+         ELSE
+            v = v + 1
+            DO col=1,ncols
                data(col)%cc(:, v) = tvar%initial
-            ENDIF
-         ENDDO
+            ENDDO
+         ENDIF
       ENDIF
    ENDDO
 
