@@ -93,7 +93,7 @@ endif
 include ../libaed-water/make_rules.inc
 
 ${objdir}/aed_external.o: ../libaed-water/src/aed_external.F90
-	$(FC) $(FFLAGS) $(EXTFFLAGS) -D_FORTRAN_SOURCE_ $(OMPFLAG) -c $< -o $@
+	$(F90) $(FFLAGS) $(EXTFFLAGS) -D_FORTRAN_SOURCE_ $(OMPFLAG) -c $< -o $@
 
 ${libdir}/${APILIB}.${so_ext}: ${libdir}/${APILIB}.a
 	$(F90) ${SHARED} -o $@.${SOVERS}.${VERS} ${OBJS} ${LDFLAGS} ${SOFLAGS}

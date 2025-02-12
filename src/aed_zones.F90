@@ -77,6 +77,7 @@ MODULE aed_zones
       AED_REAL :: z_ss4
 
       AED_REAL :: z_layer_stress
+      AED_REAL :: z_sed_zone
       AED_REAL :: z_sed_zones
       AED_REAL :: z_wind
       AED_REAL :: z_air_temp
