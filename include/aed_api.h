@@ -9,7 +9,7 @@
 !#                                                                             #
 !#      http://aquatic.science.uwa.edu.au/                                     #
 !#                                                                             #
-!#  Copyright 2024 - The University of Western Australia                       #
+!#  Copyright 2024 - 2025 - The University of Western Australia                #
 !#                                                                             #
 !#  This file is part of libaed (Library for AquaticEco Dynamics)              #
 !#                                                                             #
@@ -38,7 +38,7 @@
 #include "aed.h"
 #include "aed_api_env.h"
 
-#define AED_API_VERSION  0.9.2"
+#define AED_API_VERSION  0.9.3"
 
 #ifndef AED_REAL
 #  define AED_REAL REAL(kind=C_DOUBLE)

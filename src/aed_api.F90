@@ -11,7 +11,7 @@
 !#                                                                             #
 !#     http://aquatic.science.uwa.edu.au/                                      #
 !#                                                                             #
-!# Copyright 2024 - The University of Western Australia                        #
+!# Copyright 2024 - 2025 - The University of Western Australia                 #
 !#                                                                             #
 !#  This file is part of libaed (Library for AquaticEco Dynamics)              #
 !#                                                                             #
@@ -58,18 +58,19 @@ MODULE aed_api
 !
 !-------------------------------------------------------------------------------
 !
-   PUBLIC aed_init_model,       &
-          aed_run_model,        &
-          aed_var_index,        &
-          aed_clean_model,      &
-          api_config_t,         &
-          aed_config_model,     &
-          api_env_t,            &
-          aed_set_model_env,    &
-          api_data_t,           &
-          aed_set_model_data,   &
-          aed_mobility_t,       &
-          aed_set_mobility
+   PUBLIC aed_configure_models,  &
+          aed_run_model,         &
+          aed_var_index,         &
+          aed_clean_model,       &
+          aed_coupling_t,        &
+          aed_set_coupling,      &
+          aed_env_t,             &
+          aed_set_model_env,     &
+          aed_data_t,            &
+          aed_set_model_data,    &
+          aed_check_model_setup, &
+          aed_mobility_fn_t,     &
+          aed_set_mobility_fn
 
    !#===========================================================#!
    TYPE AED_DPTR
@@ -80,7 +81,7 @@ MODULE aed_api
    !#===========================================================#!
    !* A structure to pass configuration values to AED           *!
    !*-----------------------------------------------------------*!
-   TYPE api_config_t
+   TYPE aed_coupling_t
       INTEGER  :: MaxLayers
       INTEGER  :: MaxColumns
 
@@ -105,24 +106,25 @@ MODULE aed_api
       AED_REAL :: par_fraction = 0.43   ! 0.45
       AED_REAL :: uva_fraction = 0.048  ! 0.035
       AED_REAL :: uvb_fraction = 0.002  ! 0.005
-   END TYPE api_config_t
+   END TYPE aed_coupling_t
    !#===========================================================#!
 
    !#===========================================================#!
    !* A structure to pass data array pointers to AED            *!
    !*-----------------------------------------------------------*!
-   TYPE api_data_t
+   TYPE aed_data_t
       AED_REAL,DIMENSION(:,:),POINTER :: cc         => null()  !# (nlayers,nvars)
       AED_REAL,DIMENSION(:),  POINTER :: cc_hz      => null()  !# (nbenvars)
       AED_REAL,DIMENSION(:,:),POINTER :: cc_diag    => null()  !# (nlayers,ndiagvars)
       AED_REAL,DIMENSION(:),  POINTER :: cc_diag_hz => null()  !# (ndiagbenvars)
-   END TYPE api_data_t
+   END TYPE aed_data_t
    !#===========================================================#!
 
    !#===========================================================#!
    !* A structure to pass environment array pointers to AED     *!
    !*-----------------------------------------------------------*!
-   TYPE api_env_t
+   TYPE aed_env_t
+      INTEGER :: n_layers
       AED_REAL,DIMENSION(:),POINTER :: height       => null() !# layer height (previously "h")
       AED_REAL,DIMENSION(:),POINTER :: area         => null() !# layer area
       AED_REAL,DIMENSION(:),POINTER :: dz           => null() !# layer thickness
@@ -177,7 +179,7 @@ MODULE aed_api
 
       AED_REAL,POINTER :: yearday                   => null()
       AED_REAL,POINTER :: timestep                  => null()
-   END TYPE api_env_t
+   END TYPE aed_env_t
    !#===========================================================#!
 
    !#===========================================================#!
@@ -243,8 +245,8 @@ MODULE aed_api
 !  !#===========================================================#!
 !  TYPE api_water_col_t
 !     TYPE(aed_column_t),POINTER :: column => null()
-!     TYPE(api_data_t),POINTER   :: data   => null()
-!     TYPE(api_env_t),POINTER    :: env    => null()
+!     TYPE(aed_data_t),POINTER   :: data   => null()
+!     TYPE(aed_env_t),POINTER    :: env    => null()
 !     TYPE(api_global_t),POINTER :: glob   => null()
 !  END TYPE api_water_col_t
 !  !#===========================================================#!
@@ -350,7 +352,7 @@ MODULE aed_api
   !-----------------------------------------------------------------------------
   INTERFACE
 
-    SUBROUTINE aed_mobility_t(N,dt,h,A,ww,min_C,cc)
+    SUBROUTINE aed_mobility_fn_t(N,dt,h,A,ww,min_C,cc)
        INTEGER,INTENT(in)     :: N       !# number of vertical layers
        AED_REAL,INTENT(in)    :: dt      !# time step (s)
        AED_REAL,INTENT(in)    :: h(*)    !# layer thickness (m)
@@ -358,12 +360,12 @@ MODULE aed_api
        AED_REAL,INTENT(in)    :: ww(*)   !# vertical speed (m/s)
        AED_REAL,INTENT(in)    :: min_C   !# minimum allowed cell concentration
        AED_REAL,INTENT(inout) :: cc(*)   !# cell concentration
-    END SUBROUTINE aed_mobility_t
+    END SUBROUTINE aed_mobility_fn_t
 
   END INTERFACE
   !-----------------------------------------------------------------------------
 
-  PROCEDURE(aed_mobility_t),POINTER :: doMobility => null()
+  PROCEDURE(aed_mobility_fn_t),POINTER :: doMobility => null()
 
 !===============================================================================
 CONTAINS
@@ -442,7 +444,7 @@ END SUBROUTINE aed_show_vars
 
 
 !###############################################################################
-INTEGER FUNCTION aed_init_model(fname, NumWQ_Vars, NumWQ_Ben, NumWQ_Diag, NumWQ_DiagS)
+INTEGER FUNCTION aed_configure_models(fname, NumWQ_Vars, NumWQ_Ben, NumWQ_Diag, NumWQ_DiagS)
 !-------------------------------------------------------------------------------
 ! Initialize the AED-API driver by reading settings from "fname".
 !-------------------------------------------------------------------------------
@@ -481,7 +483,7 @@ INTEGER FUNCTION aed_init_model(fname, NumWQ_Vars, NumWQ_Ben, NumWQ_Diag, NumWQ_
 # endif
 #endif
 
-   print *,'    libaed enabled.... aed_init_model processing: ', TRIM(fname)
+   print *,'    libaed enabled.... aed_configure_models processing: ', TRIM(fname)
    namlst = find_free_lun()
 
    print*,'     ---------- AED API config : start ----------'
@@ -539,20 +541,20 @@ INTEGER FUNCTION aed_init_model(fname, NumWQ_Vars, NumWQ_Ben, NumWQ_Diag, NumWQ_
 
    print*,'     ----------  AED API config : end  ----------'
 
-   aed_init_model = n_aed_vars
-END FUNCTION aed_init_model
+   aed_configure_models = n_aed_vars
+END FUNCTION aed_configure_models
 !+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 
 
 !###############################################################################
-SUBROUTINE aed_set_mobility(mobl)
+SUBROUTINE aed_set_mobility_fn(mobl)
 !-------------------------------------------------------------------------------
 ! The pre-kinetics stage of an AED timestep run will attempt to run
 ! settling/rising code if mobility_off is false;
 ! This routine saves the pointer to the mobility code
 !-------------------------------------------------------------------------------
 !ARGUMENTS
-   PROCEDURE(aed_mobility_t),POINTER :: mobl
+   PROCEDURE(aed_mobility_fn_t),POINTER :: mobl
 !
 !LOCALS
 !
@@ -560,15 +562,15 @@ SUBROUTINE aed_set_mobility(mobl)
 !BEGIN
 !
     doMobility => mobl
-END SUBROUTINE aed_set_mobility
+END SUBROUTINE aed_set_mobility_fn
 !+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 
 
 !###############################################################################
-SUBROUTINE aed_config_model(conf)
+SUBROUTINE aed_set_coupling(conf)
 !-------------------------------------------------------------------------------
 !ARGUMENTS
-   TYPE(api_config_t), INTENT(in) :: conf
+   TYPE(aed_coupling_t), INTENT(in) :: conf
 !
 !LOCALS
 !
@@ -591,16 +593,16 @@ SUBROUTINE aed_config_model(conf)
    friction = conf%friction
 
    Kw = conf%Kw
-END SUBROUTINE aed_config_model
+END SUBROUTINE aed_set_coupling
 !+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 
 
 !###############################################################################
-SUBROUTINE aed_set_model_data(dat, ncols)
+SUBROUTINE aed_set_model_data(dat, ncols, nlevs)
 !-------------------------------------------------------------------------------
 !ARGUMENTS
-   INTEGER,INTENT(in) :: ncols
-   TYPE(api_data_t),INTENT(in) :: dat(ncols)
+   INTEGER,INTENT(in) :: ncols, nlevs
+   TYPE(aed_data_t),INTENT(in) :: dat(ncols)
 !
 !LOCALS
    INTEGER :: av, v, sv, status, col
@@ -617,6 +619,7 @@ SUBROUTINE aed_set_model_data(dat, ncols)
       data(col)%cc_diag    => dat(col)%cc_diag
       data(col)%cc_diag_hz => dat(col)%cc_diag_hz
    ENDDO
+   IF (nlevs > MaxLayers) MaxLayers = nlevs
 
    ALLOCATE(min_((n_vars + n_vars_ben))) ; ALLOCATE(max_((n_vars + n_vars_ben)))
 
@@ -650,8 +653,8 @@ SUBROUTINE aed_set_model_data(dat, ncols)
    IF (status /= 0) STOP 'allocate_memory(): Error allocating (ws)'
    ws = zero_
 
-   !# Trigger an error if we don't have all we need.
-   CALL check_data
+!  !# Trigger an error if we don't have all we need.
+!  CALL aed_check_model_setup
 END SUBROUTINE aed_set_model_data
 !+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 
@@ -661,7 +664,7 @@ SUBROUTINE aed_set_model_env(env, ncols)
 !-------------------------------------------------------------------------------
 !ARGUMENTS
    INTEGER,INTENT(in) :: ncols
-   TYPE(api_env_t),INTENT(in) :: env(ncols)
+   TYPE(aed_env_t),INTENT(in) :: env(ncols)
 !
 !LOCALS
    INTEGER :: tv, col
@@ -779,7 +782,7 @@ END SUBROUTINE aed_set_model_env
 
 
 !###############################################################################
-SUBROUTINE check_data
+SUBROUTINE aed_check_model_setup
 !-------------------------------------------------------------------------------
 ! Check that all variable dependencies have been met
 !-------------------------------------------------------------------------------
@@ -869,7 +872,7 @@ SUBROUTINE check_data
    IF ( n_vars_diag_sheet < sd ) print *,"More sheet diag vars than expected"
 
    IF ( err_count > 0 ) CALL STOPIT("*** Errors in configuration")
-END SUBROUTINE check_data
+END SUBROUTINE aed_check_model_setup
 !+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 
 
