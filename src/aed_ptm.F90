@@ -41,6 +41,7 @@ MODULE aed_ptm
 
    USE ISO_C_BINDING
    USE aed_common
+   USE aed_core, ONLY:  aed_ptm_t
 
    IMPLICIT NONE
 
@@ -76,6 +77,7 @@ MODULE aed_ptm
       TYPE(partgroup_p),ALLOCATABLE,DIMENSION(:) :: prt
    END TYPE partgroup_cell
 
+
 !  TYPE :: partgroup_cell
 !      INTEGER :: count, n
 !      TYPE(partgroup_p),ALLOCATABLE,DIMENSION(:) :: prt
@@ -90,10 +92,10 @@ MODULE aed_ptm
    INTEGER :: aed_n_groups
    TYPE(aed_part_group_t),DIMENSION(:),POINTER :: particle_groups
 
-   CINTEGER,DIMENSION(:,:,:),POINTER :: ptm_istat       !# AED particle data structure (NGroups,NParticles,NAttributes)
-   AED_REAL,DIMENSION(:,:,:),POINTER :: ptm_env         !# AED particle data structure (NGroups,NParticles,NAttributes)
-   AED_REAL,DIMENSION(:,:,:),POINTER :: ptm_state       !# AED particle data structure (NGroups,NParticles,NAttributes)
-   AED_REAL,DIMENSION(:,:,:),POINTER :: ptm_diag        !# AED particle data structure (NGroups,NParticles,NAttributes)
+   CINTEGER,DIMENSION(:,:,:),ALLOCATABLE, TARGET :: ptm_istat       !# AED particle data structure (NGroups,NParticles,NAttributes)
+   AED_REAL,DIMENSION(:,:,:),ALLOCATABLE, TARGET :: ptm_env         !# AED particle data structure (NGroups,NParticles,NAttributes)
+   AED_REAL,DIMENSION(:,:,:),ALLOCATABLE, TARGET :: ptm_state       !# AED particle data structure (NGroups,NParticles,NAttributes)
+   AED_REAL,DIMENSION(:,:,:),ALLOCATABLE, TARGET :: ptm_diag        !# AED particle data structure (NGroups,NParticles,NAttributes)
 
    INTEGER, PARAMETER :: n_ptm_istat = 5
    INTEGER, PARAMETER :: n_ptm_env = 10
@@ -162,7 +164,7 @@ END SUBROUTINE aed_ptm_init
 
 
 !###############################################################################
-SUBROUTINE Particles(column, count, parts)
+SUBROUTINE Particles(column, count, layer_particles)
 !-------------------------------------------------------------------------------
 !
 ! Calculate biogeochemical transformations on particles 
@@ -170,7 +172,7 @@ SUBROUTINE Particles(column, count, parts)
 !-------------------------------------------------------------------------------
 !ARGUMENTS
    TYPE (aed_column_t), INTENT(inout) :: column(:)
-   TYPE(partgroup_cell), INTENT(inout) :: parts(:)
+   TYPE(partgroup_cell), INTENT(inout) :: layer_particles(:)
    INTEGER,  INTENT(in)    :: count
 !
 !LOCAL VARIABLES:
@@ -179,6 +181,8 @@ SUBROUTINE Particles(column, count, parts)
    AED_REAL,DIMENSION(20) :: zz
    INTEGER :: stat, idxi3
    AED_REAL :: dt = 3600
+
+   TYPE (aed_ptm_t) :: ptm
 
 !
 !-------------------------------------------------------------------------------
@@ -191,64 +195,25 @@ SUBROUTINE Particles(column, count, parts)
 
       ppid = 0          ! new cell identifier, to allow cumulation of prts
 
-      DO pt=1,parts(lev)%count
+      DO pt=1,layer_particles(lev)%count
 
-         grp = parts(lev)%prt(pt)%grp ; prt = parts(lev)%prt(pt)%idx
+         grp = layer_particles(lev)%prt(pt)%grp ; prt = layer_particles(lev)%prt(pt)%idx
          !stat  = ptm_istat(grp,part,idx_stat) ! particle_groups(grp)%idx_stat   ! should be 1
          !idxi3 = ptm_istat(grp,part,idx_3)    ! should be 3
 
+         ptm%ptm_istat => ptm_istat(grp,prt,:)
+         ptm%ptm_env => ptm_env(grp,prt,:)
+         ptm%ptm_state => ptm_state(grp,prt,:)
+         ptm%ptm_diag => ptm_diag(grp,prt,:)
+
          IF ( ptm_istat(grp,prt,1) >= 0 ) THEN
 
-            NU = ubound(particle_groups(grp)%vars, 1)
-            n = min(16, size(particle_groups(grp)%prop(:,prt)))
+            !CALL aed_particle_bgc(column,lev,ppid,zz)     !ppid getting incremeted in here
 
-            zz(:) = ptm_state(grp,prt,:)
+            CALL aed_particle_bgc(column,lev,ppid,ptm)     
 
-          !! zz(1:n) = particle_groups(grp)%prop(1:n,prt)
-          !  zz(1)  = particle_groups(grp)%prop(particle_groups(grp)%idx_uvw0, prt)
-          !  zz(2)  = particle_groups(grp)%prop(particle_groups(grp)%idx_uvw0+1, prt)
-          !  zz(3)  = particle_groups(grp)%prop(particle_groups(grp)%idx_uvw0+2, prt)
-          !  zz(4)  = particle_groups(grp)%prop(particle_groups(grp)%idx_uvw, prt)
-          !  zz(5)  = particle_groups(grp)%prop(particle_groups(grp)%idx_uvw+1, prt)
-          !  zz(6)  = particle_groups(grp)%prop(particle_groups(grp)%idx_uvw+2, prt)
-          !  zz(7)  = particle_groups(grp)%prop(particle_groups(grp)%idx_nu, prt)
-          !  zz(8)  = particle_groups(grp)%prop(particle_groups(grp)%idx_nu+1, prt)
-          !  zz(9)  = particle_groups(grp)%prop(particle_groups(grp)%idx_nu+2, prt)
-          !  zz(10) = particle_groups(grp)%prop(particle_groups(grp)%idx_nu+3, prt)
-          !  zz(11) = particle_groups(grp)%prop(particle_groups(grp)%idx_wsel, prt)
-          !  zz(12) = particle_groups(grp)%prop(particle_groups(grp)%idx_watd, prt)
-          !  zz(13) = particle_groups(grp)%prop(particle_groups(grp)%idx_partd, prt)
-          !  zz(14) = particle_groups(grp)%prop(particle_groups(grp)%idx_wnd, prt) !Vvel
-          !
-          !  IF (NU > 0) zz(15) = particle_groups(grp)%vars(1, prt)  !Mass
-          !  IF (NU > 1) zz(16) = particle_groups(grp)%vars(2, prt)
-
-          !  zz(17:18) = particle_groups(grp)%age(1:2,prt)   !Birth and Age
-          !  zz(19) = particle_groups(grp)%status(stat, prt)    !Status
-
-            CALL aed_particle_bgc(column,lev,ppid,zz)     !ppid getting incremeted in here
-
-           !!particle_groups(grp)%prop(1:n,prt) = zz(1:n)
-           ! particle_groups(grp)%prop(particle_groups(grp)%idx_uvw0, prt)   = zz(1)
-           ! particle_groups(grp)%prop(particle_groups(grp)%idx_uvw0+1, prt) = zz(2)
-           ! particle_groups(grp)%prop(particle_groups(grp)%idx_uvw0+2, prt) = zz(3)
-           ! particle_groups(grp)%prop(particle_groups(grp)%idx_uvw, prt)    = zz(4)
-           ! particle_groups(grp)%prop(particle_groups(grp)%idx_uvw+1, prt)  = zz(5)
-           ! particle_groups(grp)%prop(particle_groups(grp)%idx_uvw+2, prt)  = zz(6)
-           ! particle_groups(grp)%prop(particle_groups(grp)%idx_nu, prt)     = zz(7)
-           ! particle_groups(grp)%prop(particle_groups(grp)%idx_nu+1, prt)   = zz(8)
-           ! particle_groups(grp)%prop(particle_groups(grp)%idx_nu+2, prt)   = zz(9)
-           ! particle_groups(grp)%prop(particle_groups(grp)%idx_nu+3, prt)   = zz(10)
-           ! particle_groups(grp)%prop(particle_groups(grp)%idx_wsel, prt)   = zz(11)
-           ! particle_groups(grp)%prop(particle_groups(grp)%idx_watd, prt)   = zz(12)
-           ! particle_groups(grp)%prop(particle_groups(grp)%idx_partd, prt)  = zz(13)
-           ! particle_groups(grp)%prop(particle_groups(grp)%idx_wnd, prt)    = zz(14)
-
-           ! IF (NU > 0) particle_groups(grp)%vars(1, prt) = zz(15)
-           ! IF (NU > 1) particle_groups(grp)%vars(2, prt) = zz(16)
-           ! particle_groups(grp)%status(stat, prt) = zz(19)
          ENDIF
-         !particle_groups(grp)%age(2,prt) = particle_groups(grp)%age(2,prt) + dt
+
       ENDDO
    ENDDO
 END SUBROUTINE Particles
@@ -320,7 +285,7 @@ SUBROUTINE Particles_zz(column, count, parts)
             zz(17:18) = particle_groups(grp)%age(1:2,prt)   !Birth and Age
             zz(19) = particle_groups(grp)%status(stat, prt)    !Status
 
-            CALL aed_particle_bgc(column,lev,ppid,zz)     !ppid getting incremeted in here
+        !    CALL aed_particle_bgc(column,lev,ppid,zz)     !ppid getting incremeted in here
 
            !particle_groups(grp)%prop(1:n,prt) = zz(1:n)
             particle_groups(grp)%prop(particle_groups(grp)%idx_uvw0, prt)   = zz(1)
