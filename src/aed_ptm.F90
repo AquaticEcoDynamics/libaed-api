@@ -210,7 +210,7 @@ SUBROUTINE Particles(column, count, layer_particles)
 
             !CALL aed_particle_bgc(column,lev,ppid,zz)     !ppid getting incremeted in here
 
-            CALL aed_particle_bgc(column,lev,ppid,ptm)     
+            CALL aed_particle_bgc(column,lev,ppid,p=ptm)     
 
          ENDIF
 
