@@ -107,6 +107,9 @@ MODULE aed_zones
       AED_REAL,DIMENSION(:),  POINTER :: z_cc_hz      !(2, n_vars_ben)
       AED_REAL,DIMENSION(:,:),POINTER :: z_cc_diag    !(n_levs, n_diag_vars)
       AED_REAL,DIMENSION(:),  POINTER :: z_cc_diag_hz !(2, n_diag_vars_hz)
+
+      AED_REAL,POINTER :: longitude   => null()
+      AED_REAL,POINTER :: latitude    => null()
    END TYPE api_zone_t
    !#===========================================================#!
 
