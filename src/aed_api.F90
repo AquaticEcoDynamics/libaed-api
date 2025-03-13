@@ -30,6 +30,14 @@
 !#                                                                             #
 !###############################################################################
 
+!# CAB: need to check order of indexes in flux,cc etc
+!# CAB: libaed core is completely index agnostic so we can do what we want here
+!# CAB: but better to follow (vars, layers, columns)
+!#
+!# CAB: Then need to investigate array of aed columns so we dont have to keep
+!# CAB: redefining them.  Fluxes should be OK because dta only persists in a
+!# CAB: column run anyway
+
 #include "aed_api.h"
 
 #ifndef __GFORTRAN__
@@ -39,7 +47,7 @@
 #endif
 
 !# Ultimately these should go - the code should be sufficiently generic
-!# to handle all cases, bu while merging is happening we probably need them
+!# to handle all cases, but while merging is happening we probably need them
 #define GLM_VARIANT   1
 #define TFV_VARIANT   2
 #define SCH_VARIANT   3
@@ -52,7 +60,6 @@
 !-------------------------------------------------------------------------------
 MODULE aed_api
 !
-!  USE ISO_C_BINDING
    USE IEEE_ARITHMETIC
 
    USE aed_util
@@ -122,10 +129,10 @@ MODULE aed_api
    !* A structure to pass data array pointers to AED            *!
    !*-----------------------------------------------------------*!
    TYPE aed_data_t
-      AED_REAL,DIMENSION(:,:),POINTER :: cc         => null()  !# (nlayers,nvars)
-      AED_REAL,DIMENSION(:),  POINTER :: cc_hz      => null()  !# (nbenvars)
-      AED_REAL,DIMENSION(:,:),POINTER :: cc_diag    => null()  !# (nlayers,ndiagvars)
-      AED_REAL,DIMENSION(:),  POINTER :: cc_diag_hz => null()  !# (ndiagbenvars)
+      AED_REAL,DIMENSION(:,:),POINTER :: cc         => null()  !# (n_vars,n_layers)
+      AED_REAL,DIMENSION(:),  POINTER :: cc_hz      => null()  !# (n_ben_vars)
+      AED_REAL,DIMENSION(:,:),POINTER :: cc_diag    => null()  !# (n_diag_vars,n_layers)
+      AED_REAL,DIMENSION(:),  POINTER :: cc_diag_hz => null()  !# (n_diag_ben_vars)
    END TYPE aed_data_t
    !#===========================================================#!
 
@@ -149,7 +156,6 @@ MODULE aed_api
       AED_REAL,DIMENSION(:),POINTER :: ss3          => null()
       AED_REAL,DIMENSION(:),POINTER :: ss4          => null()
       AED_REAL,DIMENSION(:),POINTER :: cvel         => null() !# cell velocity
-!     AED_REAL,DIMENSION(:),POINTER :: vvel         => null() !# vertical velocity
       AED_REAL,DIMENSION(:),POINTER :: bio_drag     => null()
       AED_REAL,DIMENSION(:),POINTER :: ustar_bed    => null()
       AED_REAL,DIMENSION(:),POINTER :: wv_uorb      => null()
@@ -180,8 +186,8 @@ MODULE aed_api
       AED_REAL,DIMENSION(:),POINTER :: uva          => null()
       AED_REAL,DIMENSION(:),POINTER :: uvb          => null()
 
-      INTEGER, DIMENSION(:,:),POINTER :: mat_id     => null()
-      LOGICAL, DIMENSION(:),  POINTER :: active     => null()
+      INTEGER, POINTER :: mat_id                    => null()
+      LOGICAL, POINTER :: active                    => null()
 
       AED_REAL,POINTER :: longitude                 => null()
       AED_REAL,POINTER :: latitude                  => null()
@@ -195,11 +201,13 @@ MODULE aed_api
    TYPE api_col_data_t
       INTEGER :: n_layers                           = 0 !# number of layers in this column
                                                         !# in cases like GLM this may vary each timestep
+      LOGICAL,POINTER :: active                     => null()
+      INTEGER,POINTER :: col_num                    => null()
 
       !# Main arrays storing/pointing to the state and diagnostic variables
-      AED_REAL,DIMENSION(:,:),POINTER :: cc         => null()  !# (n_layers,n_vars)
+      AED_REAL,DIMENSION(:,:),POINTER :: cc         => null()  !# (n_vars, n_layers)
       AED_REAL,DIMENSION(:),  POINTER :: cc_hz      => null()  !# (n_ben_vars)
-      AED_REAL,DIMENSION(:,:),POINTER :: cc_diag    => null()  !# (n_layers,n_diag_vars)
+      AED_REAL,DIMENSION(:,:),POINTER :: cc_diag    => null()  !# (n_diag_vars, n_layers)
       AED_REAL,DIMENSION(:),  POINTER :: cc_diag_hz => null()  !# (n_diag_ben_vars)
 
       AED_REAL,DIMENSION(:),POINTER :: lheights     => null()  !# (n_layers)
@@ -230,12 +238,13 @@ MODULE aed_api
       AED_REAL,DIMENSION(:),POINTER :: ustar_bed    => null()
       AED_REAL,DIMENSION(:),POINTER :: wv_uorb      => null()
       AED_REAL,DIMENSION(:),POINTER :: wv_t         => null()
-!     AED_REAL,DIMENSION(:),POINTER :: vvel         => null()  !# vertical velocity
 
       AED_REAL,DIMENSION(:),POINTER :: sed_zones    => null()
+
+      !# The following are sheet vars
+      INTEGER, POINTER :: mat_id       => null()
       AED_REAL,POINTER :: sed_zone     => null()
 
-      !# These are sheet vars
       AED_REAL,POINTER :: col_depth    => null()
       AED_REAL,POINTER :: I_0          => null()
       AED_REAL,POINTER :: wind         => null()
@@ -315,9 +324,9 @@ MODULE aed_api
 !  AED_REAL,DIMENSION(:),POINTER :: uvb => null()
    AED_REAL,DIMENSION(:,:),ALLOCATABLE,TARGET :: lpar
 
-   INTEGER, DIMENSION(:,:),POINTER :: mat_id => null()
-   INTEGER, DIMENSION(:,:),POINTER :: colnums => null()
-   LOGICAL, DIMENSION(:),  POINTER :: active => null()
+!  INTEGER, DIMENSION(:,:),POINTER :: mat_id => null()
+!  INTEGER, DIMENSION(:,:),POINTER :: col_num => null()
+!  LOGICAL, POINTER :: active => null()
 
 !  !# Maps to nearest cell with water (for riparian exchange)
 ! may be tuflow specific
@@ -331,7 +340,7 @@ MODULE aed_api
 !  LOGICAL,DIMENSION(:),POINTER :: active => null()
 
    !# Arrays for work, vertical movement (ws), and cross-boundary fluxes
-   AED_REAL,DIMENSION(:,:),ALLOCATABLE,TARGET :: ws
+   AED_REAL,DIMENSION(:,:),ALLOCATABLE,TARGET :: ws   !# (n_vars, n_layers)
    AED_REAL,DIMENSION(:),ALLOCATABLE :: min_, max_
 
    !# To support light
@@ -545,8 +554,8 @@ INTEGER FUNCTION aed_configure_models(fname, NumWQ_Vars, NumWQ_Ben, NumWQ_Diag, 
 #endif
 
    print "(/,5X,'AED : n_aed_vars  = ',I3,' ; MaxLayers         = ',I4)",n_aed_vars,MaxLayers
-   print "(  5X,'AED : n_vars      = ',I3,' ; n_vars_ben        = ',I3)",n_vars,n_vars_ben
-   print "(  5X,'AED : n_vars_diag = ',I3,' ; n_vars_diag_sheet = ',I3,/)",n_vars_diag,n_vars_diag_sheet
+   print "(  5X,'AED : n_vars      = ',I3,' ; n_vars_ben        = ',I4)",n_vars,n_vars_ben
+   print "(  5X,'AED : n_vars_diag = ',I3,' ; n_vars_diag_sheet = ',I4,/)",n_vars_diag,n_vars_diag_sheet
 
    !# names = grab the names from info
    ALLOCATE(names(n_vars),stat=status)
@@ -614,8 +623,76 @@ SUBROUTINE aed_set_coupling(conf)
 
    Kw = conf%Kw
    Ksed = conf%Ksed
+
+!  CALL aed_prime_environment
 END SUBROUTINE aed_set_coupling
 !+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+
+#if 0
+!###############################################################################
+SUBROUTINE aed_prime_environment()
+!-------------------------------------------------------------------------------
+!ARGUMENTS
+!
+!LOCALS
+   INTEGER :: av
+   CHARACTER(len=4),TARGET :: pref = 'schm'
+!
+!-------------------------------------------------------------------------------
+!BEGIN
+   CALL aed_set_prefix(pref)
+   av=aed_locate_global('temperature',         .FALSE.)
+   av=aed_locate_global('salinity',            .FALSE.)
+   av=aed_locate_global('density',             .FALSE.)
+   av=aed_locate_global('layer_ht',            .FALSE.)
+   av=aed_locate_global('layer_area',          .FALSE.)
+   av=aed_locate_global('depth',               .FALSE.)
+   av=aed_locate_global('extc_coef',           .FALSE.)
+   av=aed_locate_global('tss',                 .FALSE.)
+   av=aed_locate_global('ss1',                 .FALSE.)
+   av=aed_locate_global('ss2',                 .FALSE.)
+   av=aed_locate_global('ss3',                 .FALSE.)
+   av=aed_locate_global('ss4',                 .FALSE.)
+   av=aed_locate_global('cell_vel',            .FALSE.)
+   av=aed_locate_global('pressure',            .FALSE.)
+
+   av=aed_locate_global('sed_zones',           .FALSE.)
+
+   av=aed_locate_global('nir',                 .FALSE.)
+   av=aed_locate_global('par',                 .FALSE.)
+   av=aed_locate_global('uva',                 .FALSE.)
+   av=aed_locate_global('uvb',                 .FALSE.)
+
+   av=aed_locate_sheet_global('sed_zone',      .FALSE.)
+
+   av=aed_locate_sheet_global('par_sf',        .FALSE.)
+   av=aed_locate_sheet_global('wind_speed',    .FALSE.)
+   av=aed_locate_sheet_global('air_temp',      .FALSE.)
+   av=aed_locate_sheet_global('air_pres',      .FALSE.)
+   av=aed_locate_sheet_global('rain',          .FALSE.)
+   av=aed_locate_sheet_global('evap',          .FALSE.)
+   av=aed_locate_sheet_global('humidity',      .FALSE.)
+   av=aed_locate_sheet_global('longwave',      .FALSE.)
+   av=aed_locate_sheet_global('bathy',         .FALSE.)
+   av=aed_locate_sheet_global('rainloss',      .FALSE.)
+   av=aed_locate_sheet_global('taub',          .FALSE.)
+
+   av=aed_locate_sheet_global('col_depth',     .FALSE.)
+ ! av=aed_locate_sheet_global('col_num',       .FALSE.)
+ ! av=aed_locate_sheet_global('nearest_active',.FALSE.)
+ ! av=aed_locate_sheet_global('nearest_depth', .FALSE.)
+
+   av=aed_locate_sheet_global('material',      .FALSE.)
+
+   av=aed_locate_sheet_global('longitude',     .FALSE.)
+   av=aed_locate_sheet_global('latitude',      .FALSE.)
+
+   av=aed_locate_sheet_global('yearday',       .FALSE.)
+   av=aed_locate_sheet_global('timestep',      .FALSE.)
+END SUBROUTINE aed_prime_environment
+!+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+#endif
 
 
 !###############################################################################
@@ -636,7 +713,7 @@ SUBROUTINE aed_set_model_data(dat, ncols, nlevs)
       data(col)%cc         => dat(col)%cc
 !# Eventually this will be properly separated
 !     data(col)%cc_hz      => dat(col)%cc_hz
-      data(col)%cc_hz      => dat(col)%cc(1,n_vars:n_vars+n_vars_ben)
+      data(col)%cc_hz      => dat(col)%cc(n_vars:n_vars+n_vars_ben,1)
       data(col)%cc_diag    => dat(col)%cc_diag
       data(col)%cc_diag_hz => dat(col)%cc_diag_hz
    ENDDO
@@ -656,12 +733,12 @@ SUBROUTINE aed_set_model_data(dat, ncols, nlevs)
          IF ( tvar%sheet ) THEN
             sv = sv + 1
             DO col=1,ncols
-               data(col)%cc(:, n_vars+sv) = tvar%initial
+               data(col)%cc(n_vars+sv,:) = tvar%initial
             ENDDO
          ELSE
             v = v + 1
             DO col=1,ncols
-               data(col)%cc(:, v) = tvar%initial
+               data(col)%cc(v,:) = tvar%initial
             ENDDO
          ENDIF
       ENDIF
@@ -670,7 +747,7 @@ SUBROUTINE aed_set_model_data(dat, ncols, nlevs)
    !# Allocate array with vertical movement rates (m/s, positive for upwards),
    !# and set these to the values provided by the model.
    !# allocated for all vars even though only state vars entries will be used
-   ALLOCATE(ws(MaxLayers, n_aed_vars),stat=status)
+   ALLOCATE(ws(n_aed_vars, MaxLayers),stat=status)
    IF (status /= 0) STOP 'allocate_memory(): Error allocating (ws)'
    ws = zero_
 
@@ -720,7 +797,6 @@ SUBROUTINE aed_set_model_env(env, ncols)
       data(col)%ss3          => env(col)%ss3
       data(col)%ss4          => env(col)%ss4
       data(col)%cvel         => env(col)%cvel
-!     data(col)%vvel         => env(col)%vvel
       data(col)%bio_drag     => env(col)%bio_drag
       data(col)%rad          => env(col)%rad
       data(col)%ustar_bed    => env(col)%ustar_bed
@@ -743,6 +819,7 @@ SUBROUTINE aed_set_model_env(env, ncols)
       data(col)%sed_zones    => env(col)%sed_zones
       data(col)%sed_zone     => env(col)%sed_zone
 
+!     data(col)%par          => env(col)%par
       IF (link_ext_par) THEN
         data(col)%par        => env(col)%par
       ELSE
@@ -752,8 +829,8 @@ SUBROUTINE aed_set_model_env(env, ncols)
       data(col)%uva          => env(col)%uva
       data(col)%uvb          => env(col)%uvb
 
-      mat_id                 => env(col)%mat_id
-      active                 => env(col)%active
+      data(col)%mat_id       => env(col)%mat_id
+      data(col)%active       => env(col)%active
    ENDDO
 
    IF (BSSOCIATED(temp))           tv=aed_provide_global('temperature','temperature',           'celsius')
@@ -773,12 +850,10 @@ SUBROUTINE aed_set_model_env(env, ncols)
 
    IF (BSSOCIATED(sed_zones))      tv=aed_provide_global('sed_zones',  'sediment zones',        '-'      )
 
-   tv=aed_provide_global('nir',        'nir',                   'W/m2'   )
-   tv=aed_provide_global('par',        'par',                   'W/m2'   )
-   tv=aed_provide_global('uva',        'uva',                   'W/m2'   )
-   tv=aed_provide_global('uvb',        'uvb',                   'W/m2'   )
-
-   IF (BSSOCIATED(sed_zone))       tv=aed_provide_sheet_global('sed_zone',  'current sediment zone', '-'             )
+                                   tv=aed_provide_global('nir',        'nir',                   'W/m2'   )
+                                   tv=aed_provide_global('par',        'par',                   'W/m2'   )
+                                   tv=aed_provide_global('uva',        'uva',                   'W/m2'   )
+                                   tv=aed_provide_global('uvb',        'uvb',                   'W/m2'   )
 
    IF (BSSOCIATED(I_0))            tv=aed_provide_sheet_global('par_sf',        'par_sf',            'W/m2'          )
    IF (BSSOCIATED(wind))           tv=aed_provide_sheet_global('wind_speed',    'wind speed',        'm/s'           )
@@ -797,7 +872,9 @@ SUBROUTINE aed_set_model_env(env, ncols)
  ! IF (ASSOCIATED(nearest_active)) tv=aed_provide_sheet_global('nearest_active','nearest active',    '-'             )
  ! IF (ASSOCIATED(nearest_depth))  tv=aed_provide_sheet_global('nearest_depth', 'nearest depth',     'm'             )
 
-   IF (ASSOCIATED(mat_id))         tv=aed_provide_sheet_global('material',      'material',          '-'             )
+   IF (BSSOCIATED(mat_id))         tv=aed_provide_sheet_global('material',      'material',          '-'             )
+
+   IF (BSSOCIATED(sed_zone))       tv=aed_provide_sheet_global('sed_zone',      'current sediment zone', '-'         )
 
    IF (BSSOCIATED(longitude))      tv=aed_provide_sheet_global('longitude',     'longitude',         'radians'       )
    IF (BSSOCIATED(latitude))       tv=aed_provide_sheet_global('latitude',      'latitude',          'radians'       )
@@ -858,18 +935,17 @@ SUBROUTINE aed_check_model_setup
             CASE ( 'humidity' )    ; tvar%found = BSSOCIATED(humidity)
             CASE ( 'longitude' )   ; tvar%found = BSSOCIATED(longitude)
             CASE ( 'latitude' )    ; tvar%found = BSSOCIATED(latitude)
-
             CASE ( 'yearday' )     ; tvar%found = ASSOCIATED(yearday)
             CASE ( 'timestep' )    ; tvar%found = ASSOCIATED(timestep)
 
             CASE ( 'rainloss' )    ; tvar%found = BSSOCIATED(rainloss)
-            CASE ( 'material' )    ; tvar%found = ASSOCIATED(mat_id)
+            CASE ( 'material' )    ; tvar%found = BSSOCIATED(mat_id)
             CASE ( 'bathy' )       ; tvar%found = BSSOCIATED(bathy)
             CASE ( 'ss1' )         ; tvar%found = BSSOCIATED(ss1)
             CASE ( 'ss2' )         ; tvar%found = BSSOCIATED(ss2)
             CASE ( 'ss3' )         ; tvar%found = BSSOCIATED(ss3)
             CASE ( 'ss4' )         ; tvar%found = BSSOCIATED(ss4)
-!           CASE ( 'col_num' )     ; tvar%found = ASSOCIATED(colnums)
+!           CASE ( 'col_num' )     ; tvar%found = BSSOCIATED(col_num)
             CASE ( 'nearest_active' ) ; tvar%found = have_nearest ; request_nearest = have_nearest
             CASE ( 'nearest_depth' )  ; tvar%found = have_nearest ; request_nearest = have_nearest
 
@@ -968,7 +1044,7 @@ SUBROUTINE define_column(column, col, top, flux_pel, flux_atm, flux_ben, flux_ri
 
 #if CUR_VARIANT == TFV_VARIANT
             CASE ( 'bathy' )       ; column(av)%cell_sheet => data(col)%bathy
-!           CASE ( 'col_num' )     ; column(av)%cell_sheet => data(col)%colnums
+!           CASE ( 'col_num' )     ; column(av)%cell_sheet => data(col)%col_num
 
             CASE ( 'nearest_active' ) ; column(av)%cell_sheet => nearest_active(col)
             CASE ( 'nearest_depth' )  ; column(av)%cell_sheet => nearest_depth(col)
@@ -1045,13 +1121,13 @@ SUBROUTINE check_states(column, col, wlev)
                v = v + 1
                IF ( repair_state ) THEN
 #if DEBUG
-                  IF ( isnan(data(col)%cc(lev, v)) ) last_naned = i
+                  IF ( isnan(data(col)%cc(v,lev)) ) last_naned = i
 #endif
                   IF ( .NOT. isnan(min_(v)) ) THEN
-                     IF ( data(col)%cc(lev, v) < min_(v) ) data(col)%cc(lev, v) = min_(v)
+                     IF ( data(col)%cc(v, lev) < min_(v) ) data(col)%cc(v, lev) = min_(v)
                   ENDIF
                   IF ( .NOT. isnan(max_(v)) ) THEN
-                     IF ( data(col)%cc(lev, v) > max_(v) ) data(col)%cc(lev, v) = max_(v)
+                     IF ( data(col)%cc(v, lev) > max_(v) ) data(col)%cc(v, lev) = max_(v)
                   ENDIF
                ENDIF
             ENDIF
@@ -1101,22 +1177,22 @@ SUBROUTINE aed_run_model(nCols, wlev, doSurface)
 !BEGIN
 !# This worked for GLM because its zones were detirmined by the layers - this is not the case for
 !# most other systems so it needs a rethink [same calc used further down too)
-   IF (.NOT.ALLOCATED(flux_pel))   ALLOCATE(flux_pel(MAX(wlev,aed_n_zones),n_vars+n_vars_ben))
+   IF (.NOT.ALLOCATED(flux_pel))   ALLOCATE(flux_pel(n_vars+n_vars_ben,MAX(wlev,aed_n_zones)))
 
-   IF (.NOT.ALLOCATED(flux_zon))   ALLOCATE(flux_zon(aed_n_zones, n_vars+n_vars_ben))
+   IF (.NOT.ALLOCATED(flux_zon))   ALLOCATE(flux_zon(n_vars+n_vars_ben, aed_n_zones))
    IF (.NOT.ALLOCATED(flux_ben))   ALLOCATE(flux_ben(n_vars+n_vars_ben))
    IF (.NOT.ALLOCATED(flux_atm))   ALLOCATE(flux_atm(n_vars+n_vars_ben))
    IF (.NOT.ALLOCATED(flux_rip))   ALLOCATE(flux_rip(n_vars+n_vars_ben))
    IF (.NOT.ALLOCATED(column))     ALLOCATE(column(n_aed_vars))
    IF (.NOT.ALLOCATED(column_sed)) ALLOCATE(column_sed(n_aed_vars))
 
-   IF (.NOT.ALLOCATED(flux_pel_pre)) ALLOCATE(flux_pel_pre(MAX(wlev, aed_n_zones), n_vars+n_vars_ben))
-   IF (.NOT.ALLOCATED(flux_pel_z))   ALLOCATE(flux_pel_z(MAX(wlev, aed_n_zones), n_vars+n_vars_ben))
+   IF (.NOT.ALLOCATED(flux_pel_pre)) ALLOCATE(flux_pel_pre(n_vars+n_vars_ben, MAX(wlev, aed_n_zones)))
+   IF (.NOT.ALLOCATED(flux_pel_z))   ALLOCATE(flux_pel_z(n_vars+n_vars_ben, MAX(wlev, aed_n_zones)))
 
    IF ( bottom_one ) THEN
       top = wlev ; bot = 1
    ELSE
-      top = 1; bot = wlev 
+      top = 1 ; bot = wlev
    ENDIF
 
    DO col=1, nCols
@@ -1126,7 +1202,7 @@ SUBROUTINE aed_run_model(nCols, wlev, doSurface)
 
    IF ( .NOT. reinited ) THEN
       DO col=1, nCols
-         IF (.NOT. active(col)) CYCLE  !# skip this column if dry
+      !  IF (.NOT. active(col)) CYCLE  !# skip this column if dry
          CALL define_column(column, col, top, flux_pel, flux_atm, flux_ben, flux_rip)
          CALL re_initialize(column)
       ENDDO
@@ -1134,13 +1210,13 @@ SUBROUTINE aed_run_model(nCols, wlev, doSurface)
    ENDIF
 
    DO col=1, nCols
-      IF (.NOT. active(col)) CYCLE  !# skip this column if dry
+   !  IF (.NOT. active(col)) CYCLE  !# skip this column if dry
       CALL define_column(column, col, top, flux_pel, flux_atm, flux_ben, flux_rip)
       CALL pre_kinetics(col)
    ENDDO
 
    DO col=1, nCols
-      IF (.NOT. active(col)) CYCLE  !# skip this column if dry
+   !  IF (.NOT. active(col)) CYCLE  !# skip this column if dry
       CALL define_column(column, col, top, flux_pel, flux_atm, flux_ben, flux_rip)
       CALL aed_run_column(wlev, doSurface)
    ENDDO
@@ -1174,7 +1250,7 @@ CONTAINS
          !# Update the water column layers
          DO v = 1, n_vars
             DO lev = 1, wlev
-               data(col)%cc(lev, v) = data(col)%cc(lev, v) + dt_eff*flux_pel(lev, v)
+               data(col)%cc(v, lev) = data(col)%cc(v, lev) + dt_eff*flux_pel(v, lev)
             ENDDO
          ENDDO
 
@@ -1185,7 +1261,7 @@ CONTAINS
                ! Loop through each sediment zone
                DO zon = 1, aed_n_zones
                   ! Update the main cc_sed data array with the
-                  aedZones(zon)%z_cc(1, v) = aedZones(zon)%z_cc(1, v) + dt_eff*flux_zon(zon, v)
+                  aedZones(zon)%z_cc(v, bot) = aedZones(zon)%z_cc(v, bot) + dt_eff*flux_zon(v, zon)
                ENDDO
             ENDDO
 
@@ -1194,7 +1270,7 @@ CONTAINS
                                  data(col)%cc_hz, data(col)%cc_diag, data(col)%cc_diag_hz, wlev)
          ELSE
             DO v = n_vars+1, n_vars+n_vars_ben
-               data(col)%cc(1, v) = data(col)%cc(1, v) + dt_eff*flux_ben(v)
+               data(col)%cc(v, bot) = data(col)%cc(v, bot) + dt_eff*flux_ben(v)
             ENDDO
          ENDIF
 
@@ -1227,10 +1303,10 @@ CONTAINS
                   ! only for state_vars that are not sheet
                   IF ( .NOT. ieee_is_nan(tv%mobility) ) THEN
                      ! default to ws that was set during initialisation
-                     ws(:,i) = tv%mobility
+                     ws(i,:) = tv%mobility
                   ELSE
                      ! zero nan values
-                     ws(:,i) = zero_
+                     ws(i,:) = zero_
                   ENDIF
                ENDIF
             ENDIF
@@ -1238,7 +1314,7 @@ CONTAINS
          DO lev = 1, wlev
             ! update ws for modules that use the mobility method
             !# direction doesn't seem to matter ? CAB
-            CALL aed_mobility(column, lev, ws(lev,:))
+            CALL aed_mobility(column, lev, ws(:,lev))
          ENDDO
 
          !# Calculate source/sink terms due to the settling or rising of
@@ -1251,9 +1327,9 @@ CONTAINS
                   IF ( .NOT. (tv%sheet .OR. tv%diag .OR. tv%extern) ) THEN
                      v = v + 1
                      !# only for state_vars that are not sheet, and also non-zero ws
-                     IF ( .NOT. isnan(tv%mobility) .AND. SUM(ABS(ws(:,i)))>zero_ ) THEN
+                     IF ( .NOT. isnan(tv%mobility) .AND. SUM(ABS(ws(i,:)))>zero_ ) THEN
                         min_C = tv%minimum
-                        CALL doMobility(wlev, timestep, data(col)%dz, data(col)%area, ws(:, i), min_C, data(col)%cc(:, v))
+                        CALL doMobility(wlev, timestep, data(col)%dz, data(col)%area, ws(i,:), min_C, data(col)%cc(v, :))
                      ENDIF
                   ENDIF
                ENDIF
@@ -1349,19 +1425,28 @@ CONTAINS
             column(av)%cell_sheet => aedZones(zon)%z_cc_diag_hz(sd)
          ELSE
             d = d + 1
-            column(av)%cell => aedZones(zon)%z_cc_diag(:, d)
+            column(av)%cell => aedZones(zon)%z_cc_diag(d, :)
          ENDIF
       ELSE    !# state variable
          IF ( tvar%sheet ) THEN
             sv = sv + 1
+!CAB ??
+#if 1
+            IF ( tvar%bot ) THEN
+               column(av)%cell_sheet => aedZones(zon)%z_cc(n_vars+sv, bot)
+            ELSEIF ( tvar%top ) THEN
+               column(av)%cell_sheet => aedZones(zon)%z_cc(n_vars+sv, top)
+            ENDIF
+#else
             column(av)%cell_sheet => aedZones(zon)%z_cc_hz(sv)
+#endif
             column(av)%flux_ben => flux_ben(n_vars+sv)
             column(av)%flux_atm => flux_atm(n_vars+sv)
          ELSE
             v = v + 1
-            column(av)%cell => aedZones(zon)%z_cc(:, v)
+            column(av)%cell => aedZones(zon)%z_cc(v, :)
             column(av)%flux_atm => flux_atm(v)
-            column(av)%flux_pel => flux_pel(:, v)
+            column(av)%flux_pel => flux_pel(v, :)
             column(av)%flux_ben => flux_ben(v)
          ENDIF
       ENDIF
@@ -1447,14 +1532,12 @@ CONTAINS
    !LOCALS
       INTEGER :: lev,zon,v,v_start,v_end,av,sv,sd
       AED_REAL :: scale
-      INTEGER  :: layer_map(wlev)
       AED_REAL :: localrainl, localshade, localdrag
       LOGICAL :: splitZone
       TYPE(aed_variable_t),POINTER :: tvar
    !
    !----------------------------------------------------------------------------
    !BEGIN
-      !# BENTHIC FLUXES
       IF ( benthic_mode .GT. 1 ) THEN
          !# Multiple static sediment zones are simulated, and therfore overlying
          !# water conditions need to be aggregated from multiple cells/layers, and output flux
@@ -1518,11 +1601,11 @@ CONTAINS
             CALL aed_calculate_benthic_zone(column_sed, 1, zon)  !CAB???
 
             !# Record benthic fluxes in the zone array
-            flux_zon(zon, :) = flux_ben(:)
+            flux_zon(:, zon) = flux_ben(:)
 
             !# Now we have to find out the water column flux that occured and
             !# disaggregate it to relevant layers
-            flux_pel_z(zon,:) = flux_pel(zon,:)-flux_pel_pre(zon,:)
+            flux_pel_z(:, zon) = flux_pel(:, zon)-flux_pel_pre(:, zon)
          ENDDO
 !$OMP END DO
 
@@ -1549,14 +1632,14 @@ CONTAINS
                ELSE
                   scale = (aedZones(zon-1)%z_env(1)%z_height - 0.0) / (data(col)%lheights(lev) - 0.0) ! CAB???
                ENDIF
-               flux_pel(lev,v_start:v_end) = flux_pel_z(zon,v_start:v_end) * scale
+               flux_pel(v_start:v_end,lev) = flux_pel_z(v_start:v_end,zon) * scale
 
                zon = zon - 1
 
-               flux_pel(lev,v_start:v_end) = flux_pel(lev,v_start:v_end) + &
-                                           flux_pel_z(zon,v_start:v_end) * (1.0 - scale)
+               flux_pel(v_start:v_end,lev) = flux_pel(v_start:v_end,lev) + &
+                                        flux_pel_z(v_start:v_end,zon) * (1.0 - scale)
             ELSE
-               flux_pel(lev,v_start:v_end) = flux_pel_z(zon,v_start:v_end)
+               flux_pel(v_start:v_end,lev) = flux_pel_z(v_start:v_end,zon)
             ENDIF
          ENDDO
          !# Limit flux out of bottom waters to concentration of that layer
@@ -1564,10 +1647,10 @@ CONTAINS
          !# bottom flux into pelagic over bottom box (i.e., divide by layer height).
          !# scaled to proportion of layer area that is "bottom"
          DO lev=1,wlev
-            if(lev>1)flux_pel(lev, :) = flux_pel(lev, :) * (data(col)%area(lev)-data(col)%area(lev-1))/data(col)%area(lev)
+            if(lev>1)flux_pel(:, lev) = flux_pel(:, lev) * (data(col)%area(lev)-data(col)%area(lev-1))/data(col)%area(lev)
             DO v=v_start,v_end
               IF ( data(col)%cc(1, v) .GE. 0.0 ) flux_pel(lev, v) = &
-                             max(-1.0 * data(col)%cc(lev, v), flux_pel(lev, v)/data(col)%dz(lev))
+                             max(-1.0 * data(col)%cc(v, lev), flux_pel(v, lev)/data(col)%dz(lev))
             END DO
          ENDDO
       ELSE
@@ -1578,7 +1661,7 @@ CONTAINS
 
          !# Calculate temporal derivatives due to exchanges at the sediment/water interface
          IF ( zone_var .GE. 1 ) column(zone_var)%cell_sheet => aedZones(1)%z_env(1)%z_sed_zones ! CAB ???
-         CALL aed_calculate_benthic(column, 1)
+         CALL aed_calculate_benthic(column, bot)
 
          !# Limit flux out of bottom layers to concentration of that layer
          !# i.e. don't flux out more than is there is. Then
@@ -1586,8 +1669,8 @@ CONTAINS
          !# Skip -ve values, as GEO_ubalchg is -ve and doesnt not comply with this logic
          v_start = 1 ; v_end = n_vars
          DO v=v_start,v_end
-            IF ( data(col)%cc(1, v) .GE. 0.0 ) &
-               flux_pel(1, v) = max(-1.0 * data(col)%cc(1, v), flux_pel(1, v)/data(col)%dz(1))
+            IF ( data(col)%cc(v, bot) .GE. 0.0 ) &
+               flux_pel(v, bot) = max(-1.0 * data(col)%cc(v, bot), flux_pel(v, bot)/data(col)%dz(bot))
          END DO
 
          IF ( benthic_mode .EQ. 1 ) THEN
@@ -1601,10 +1684,10 @@ CONTAINS
                !# & distribute bottom flux into pelagic over bottom box (i.e., divide by layer height).
                !# scaled to proportion of area that is "bottom"
                DO v=v_start,v_end
-                  IF ( data(col)%cc(lev, v) .GE. 0.0 ) flux_pel(lev, v) = &
-                                   max(-1.0 * data(col)%cc(lev, v), flux_pel(lev, v)/data(col)%dz(lev))
+                  IF ( data(col)%cc(v, lev) .GE. 0.0 ) flux_pel(v, lev) = &
+                                   max(-1.0 * data(col)%cc(v, lev), flux_pel(v, lev)/data(col)%dz(lev))
                END DO
-               flux_pel(lev, :) = flux_pel(lev, :) * (data(col)%area(lev)-data(col)%area(lev-1))/data(col)%area(lev)
+               flux_pel(:, lev) = flux_pel(:, lev) * (data(col)%area(lev)-data(col)%area(lev-1))/data(col)%area(lev)
             ENDDO
 !$OMP END DO
          ENDIF
@@ -1620,25 +1703,27 @@ CONTAINS
    !----------------------------------------------------------------------------
    !ARGUMENTS
       TYPE(aed_column_t),INTENT(inout) :: column(:)
-      INTEGER, INTENT(in) :: wlev
+      INTEGER,INTENT(in) :: wlev
    !
    !LOCALS
+      INTEGER :: lev
       INTEGER :: layer_map(wlev)
-   !
-      INTEGER :: lev, start, end, step
-   !
       LOGICAL :: glm_version = .FALSE.
    !
    !----------------------------------------------------------------------------
    !BEGIN
-      flux_pel = zero_ ; flux_atm = zero_
-      flux_ben = zero_ ; flux_rip = zero_
+      flux_pel = zero_
+      flux_atm = zero_
+      flux_ben = zero_
+      flux_zon = zero_
+
+      flux_pel_pre = zero_
       flux_pel_z = zero_
 
-      !# WATER COLUMN UPDATING
-
       !# Start with updating column diagnostics (currently only used for light)
-      DO lev=1, wlev
+
+      !# WATER COLUMN UPDATING
+      DO lev=1,wlev
          IF (bottom_one) THEN   !# not TFV_VARIANT
             layer_map(lev) = 1 + wlev-lev
          ELSE
@@ -1657,31 +1742,29 @@ CONTAINS
       ELSE
 ! CAB : not yet
 !        IF ( do_zone_averaging ) THEN
-!           flux_pel(:,wlev) = flux_pel(:,wlev) + flux_pel_z(1,z) !/h(wlev)
+!           flux_pel(:,wlev) = flux_pel(:,wlev) + flux_pel_z(bot, z) !/h(wlev)
 !
 !           !# Calculate temporal derivatives due to benthic exchange processes.
-!           CALL aed_calculate_benthic(column, wlev, .FALSE.)
+!           CALL aed_calculate_benthic(column, bot, .FALSE.)
 !        ELSE
-            CALL aed_calculate_benthic(column, wlev)
+            CALL aed_calculate_benthic(column, bot)
 !        ENDIF
 
          !# Distribute bottom flux into pelagic over bottom box (i.e., divide by layer height).
-         flux_pel(:,wlev) = flux_pel(:,wlev)/data(col)%lheights(wlev)
+         flux_pel(:,bot) = flux_pel(:,bot)/data(col)%lheights(top)
       ENDIF
 
       !# SURFACE FLUXES
+      !# Calculate temporal derivatives due to air-water exchange.
       IF (doSurface) THEN !# no surface exchange under ice cover
-    ! IF ( do_2d_atm_flux .OR. wlev > 1 ) THEN
-         !# Calculate temporal derivatives due to air-water exchange.
-         CALL aed_calculate_surface(column, 1)
+         CALL aed_calculate_surface(column, top)
 
          !# Distribute the fluxes into pelagic surface layer
-         flux_pel(:,1) = flux_pel(:,1) + flux_atm(:)/data(col)%lheights(1)
+         flux_pel(:, top) = flux_pel(:, top) + flux_atm(:)/data(col)%dz(top)
       ENDIF
 
-
       !# WATER CELL KINETICS
-      !# Add pelagic sink and source terms for all depth levels.
+      !# Add pelagic sink and source terms in cells of all depth levels.
       DO lev=1,wlev
          CALL aed_calculate(column, lev)
       ENDDO
@@ -1748,7 +1831,6 @@ SUBROUTINE aed_clean_model()
    IF (ALLOCATED(ws))   DEALLOCATE(ws)
    IF (ALLOCATED(max_)) DEALLOCATE(max_)
    IF (ALLOCATED(min_)) DEALLOCATE(min_)
-   IF (ALLOCATED(lpar)) DEALLOCATE(lpar)
 END SUBROUTINE aed_clean_model
 !+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 

@@ -103,10 +103,10 @@ MODULE aed_zones
 
       TYPE(api_zone_env_t),DIMENSION(:),ALLOCATABLE :: z_env
 
-      AED_REAL,DIMENSION(:,:),POINTER :: z_cc         !(n_levs, n_vars)
-      AED_REAL,DIMENSION(:),  POINTER :: z_cc_hz      !(2, n_vars_ben)
-      AED_REAL,DIMENSION(:,:),POINTER :: z_cc_diag    !(n_levs, n_diag_vars)
-      AED_REAL,DIMENSION(:),  POINTER :: z_cc_diag_hz !(2, n_diag_vars_hz)
+      AED_REAL,DIMENSION(:,:),POINTER :: z_cc         !(n_vars, n_levs)
+      AED_REAL,DIMENSION(:),  POINTER :: z_cc_hz      !(n_vars_ben, 2)
+      AED_REAL,DIMENSION(:,:),POINTER :: z_cc_diag    !(n_diag_vars, n_levs)
+      AED_REAL,DIMENSION(:),  POINTER :: z_cc_diag_hz !(n_diag_vars_hz, 2)
 
       AED_REAL,POINTER :: longitude   => null()
       AED_REAL,POINTER :: latitude    => null()
@@ -172,10 +172,10 @@ SUBROUTINE aed_init_zones(n_zones, n_levs, z_cc, z_cc_hz, z_diag, z_diag_hz)
 !-------------------------------------------------------------------------------
 !ARGUMENTS
    INTEGER,INTENT(in) :: n_zones, n_levs
-   AED_REAL,DIMENSION(:,:,:),POINTER,INTENT(in) :: z_cc      !(n_zones, n_levs, n_vars)
-   AED_REAL,DIMENSION(:,:),  POINTER,INTENT(in) :: z_cc_hz   !(n_zones+1, n_vars)
-   AED_REAL,DIMENSION(:,:,:),POINTER,INTENT(in) :: z_diag    !(n_zones, n_levs, n_vars)
-   AED_REAL,DIMENSION(:,:)  ,POINTER,INTENT(in) :: z_diag_hz !(n_zones+1, n_vars)
+   AED_REAL,DIMENSION(:,:,:),POINTER,INTENT(in) :: z_cc      !(n_vars, n_levs, n_zones)
+   AED_REAL,DIMENSION(:,:),  POINTER,INTENT(in) :: z_cc_hz   !(n_vars, n_zones+1)
+   AED_REAL,DIMENSION(:,:,:),POINTER,INTENT(in) :: z_diag    !(n_vars, n_levs, n_zones)
+   AED_REAL,DIMENSION(:,:)  ,POINTER,INTENT(in) :: z_diag_hz !(n_vars, n_zones+1)
 !
 !LOCALS
    INTEGER :: zon !, s, e
@@ -191,10 +191,10 @@ SUBROUTINE aed_init_zones(n_zones, n_levs, z_cc, z_cc_hz, z_diag, z_diag_hz)
       aedZones(zon)%n_levs = n_levs
       ALLOCATE(aedZones(zon)%z_env(n_levs))
 
-      aedZones(zon)%z_cc => z_cc(zon, :, :)
-      aedZones(zon)%z_cc_hz => z_cc_hz(zon, :)
-      aedZones(zon)%z_cc_diag => z_diag(zon, :, :)
-      aedZones(zon)%z_cc_diag_hz => z_diag_hz(zon, :)
+      aedZones(zon)%z_cc => z_cc(:, :, zon)
+      aedZones(zon)%z_cc_hz => z_cc_hz(:, zon)
+      aedZones(zon)%z_cc_diag => z_diag(:, :, zon)
+      aedZones(zon)%z_cc_diag_hz => z_diag_hz(:, zon)
 ! print*,"aedZones%z_cc(",size(aedZones(zon)%z_cc, 1),",",size(aedZones(zon)%z_cc,2),")"
    ENDDO
 END SUBROUTINE aed_init_zones
