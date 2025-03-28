@@ -74,9 +74,6 @@ MODULE aed_api
 !-------------------------------------------------------------------------------
 !
    PUBLIC aed_configure_models,  &
-          aed_run_model,         &
-          aed_var_index,         &
-          aed_clean_model,       &
           aed_coupling_t,        &
           aed_set_coupling,      &
           aed_env_t,             &
@@ -85,7 +82,10 @@ MODULE aed_api
           aed_set_model_data,    &
           aed_check_model_setup, &
           aed_mobility_fn_t,     &
-          aed_set_mobility_fn
+          aed_set_mobility_fn,   &
+          aed_run_model,         &
+          aed_var_index,         &
+          aed_clean_model
 
    !#===========================================================#!
    TYPE AED_DPTR
@@ -198,6 +198,8 @@ MODULE aed_api
    !#===========================================================#!
 
    !#===========================================================#!
+   !* A structure defining a water column.                      *!
+   !*-----------------------------------------------------------*!
    TYPE api_col_data_t
       INTEGER :: n_layers                           = 0 !# number of layers in this column
                                                         !# in cases like GLM this may vary each timestep
@@ -265,18 +267,8 @@ MODULE aed_api
 
 #define BSSOCIATED(x) ( ASSOCIATED(data(1)%x) )
 
-
-!  !#===========================================================#!
-!  TYPE api_water_col_t
-!     TYPE(aed_column_t),POINTER :: column => null()
-!     TYPE(aed_data_t),POINTER   :: data   => null()
-!     TYPE(aed_env_t),POINTER    :: env    => null()
-!     TYPE(api_global_t),POINTER :: glob   => null()
-!  END TYPE api_water_col_t
-!  !#===========================================================#!
 !
 !-------------------------------------------------------------------------------
-!
 !MODULE DATA
 
    CHARACTER(len=80) :: cfg_fname = "none"
