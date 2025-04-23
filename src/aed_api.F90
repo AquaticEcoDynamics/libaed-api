@@ -196,8 +196,8 @@ MODULE aed_api
       !# feedback data
       AED_REAL,DIMENSION(:),POINTER :: biodrag    => null()
       AED_REAL,DIMENSION(:),POINTER :: bioextc    => null()
-      AED_REAL,DIMENSION(:),POINTER :: solarshade => null()
-      AED_REAL,DIMENSION(:),POINTER :: windshade  => null()
+      AED_REAL,POINTER :: solarshade => null()
+      AED_REAL,POINTER :: windshade  => null()
       AED_REAL,POINTER :: bathy    => null()
       AED_REAL,POINTER :: rainloss => null()
    END TYPE aed_env_t
@@ -271,8 +271,8 @@ MODULE aed_api
       !# These are feedback arrays
       AED_REAL,DIMENSION(:),POINTER :: biodrag    => null()
       AED_REAL,DIMENSION(:),POINTER :: bioextc    => null()
-      AED_REAL,DIMENSION(:),POINTER :: solarshade => null()
-      AED_REAL,DIMENSION(:),POINTER :: windshade  => null()
+      AED_REAL,POINTER :: solarshade => null()
+      AED_REAL,POINTER :: windshade  => null()
       AED_REAL,POINTER :: bathy    => null()
       AED_REAL,POINTER :: rainloss => null()
    END TYPE api_col_data_t
@@ -370,8 +370,8 @@ MODULE aed_api
 
    AED_REAL,DIMENSION(:,:),ALLOCATABLE,TARGET :: biodrag
    AED_REAL,DIMENSION(:,:),ALLOCATABLE,TARGET :: bioextc
-   AED_REAL,DIMENSION(:,:),ALLOCATABLE,TARGET :: solarshade
-   AED_REAL,DIMENSION(:,:),ALLOCATABLE,TARGET :: windshade
+   AED_REAL,DIMENSION(:),  ALLOCATABLE,TARGET :: solarshade
+   AED_REAL,DIMENSION(:),  ALLOCATABLE,TARGET :: windshade
    AED_REAL,DIMENSION(:),  ALLOCATABLE,TARGET :: bathy
    AED_REAL,DIMENSION(:),  ALLOCATABLE,TARGET :: rainloss
 
@@ -756,12 +756,12 @@ SUBROUTINE aed_set_model_env(env, ncols)
    need_rianl = (.NOT.ASSOCIATED(env(1)%rainloss))
    need_bathy = (.NOT.ASSOCIATED(env(1)%bathy))
 
-   IF (need_biodg) THEN ; ALLOCATE(biodrag(MaxLayers,ncols))    ; biodrag = zero_    ; ENDIF
-   IF (need_bioex) THEN ; ALLOCATE(bioextc(MaxLayers,ncols))    ; bioextc = zero_    ; ENDIF
-   IF (need_sshad) THEN ; ALLOCATE(solarshade(MaxLayers,ncols)) ; solarshade = zero_ ; ENDIF
-   IF (need_wshad) THEN ; ALLOCATE(windshade(MaxLayers,ncols))  ; windshade = zero_  ; ENDIF
-   IF (need_rianl) THEN ; ALLOCATE(rainloss(ncols))             ; rainloss = zero_   ; ENDIF
-   IF (need_bathy) THEN ; ALLOCATE(bathy(ncols))                ; bathy = zero_      ; ENDIF
+   IF (need_biodg) THEN ; ALLOCATE(biodrag(MaxLayers,ncols)) ; biodrag = zero_    ; ENDIF
+   IF (need_bioex) THEN ; ALLOCATE(bioextc(MaxLayers,ncols)) ; bioextc = zero_    ; ENDIF
+   IF (need_sshad) THEN ; ALLOCATE(solarshade(ncols))        ; solarshade = zero_ ; ENDIF
+   IF (need_wshad) THEN ; ALLOCATE(windshade(ncols))        ; windshade = zero_  ; ENDIF
+   IF (need_rianl) THEN ; ALLOCATE(rainloss(ncols))          ; rainloss = zero_   ; ENDIF
+   IF (need_bathy) THEN ; ALLOCATE(bathy(ncols))             ; bathy = zero_      ; ENDIF
 
    DO col=1,ncols
       yearday  => env(col)%yearday
@@ -810,9 +810,9 @@ SUBROUTINE aed_set_model_env(env, ncols)
       ELSE ; data(col)%biodrag    => env(col)%biodrag    ; ENDIF
       IF (need_bioex) THEN ; data(col)%bioextc    => bioextc(:,col)
       ELSE ; data(col)%bioextc    => env(col)%bioextc    ; ENDIF
-      IF (need_sshad) THEN ; data(col)%solarshade => solarshade(:,col)
+      IF (need_sshad) THEN ; data(col)%solarshade => solarshade(col)
       ELSE ; data(col)%solarshade => env(col)%solarshade ; ENDIF
-      IF (need_wshad) THEN ; data(col)%windshade  => windshade(:,col)
+      IF (need_wshad) THEN ; data(col)%windshade  => windshade(col)
       ELSE ; data(col)%windshade  => env(col)%windshade  ; ENDIF
       IF (need_rianl) THEN ; data(col)%rainloss   => rainloss(col)
       ELSE ; data(col)%rainloss   => env(col)%rainloss   ; ENDIF
@@ -881,8 +881,8 @@ SUBROUTINE aed_set_model_env(env, ncols)
 
    IF (BSSOCIATED(sed_zone))       tv=aed_provide_sheet_global('sed_zone',      'current sediment zone', '-'         )
 
-                                   tv=aed_provide_sheet_global('biodrag',       'biodrag',           ''              )
-                                   tv=aed_provide_sheet_global('bioextc',       'bioextc',           ''              )
+                                   tv=aed_provide_global('biodrag',       'biodrag',           ''              )
+                                   tv=aed_provide_global('bioextc',       'bioextc',           ''              )
                                    tv=aed_provide_sheet_global('solarshade',    'solarshade',        ''              )
                                    tv=aed_provide_sheet_global('windshade',     'windshade',         ''              )
                                    tv=aed_provide_sheet_global('bathy',         'bathy',             'm above datum' )
@@ -1047,7 +1047,11 @@ SUBROUTINE define_column(column, col, top, flux_pel, flux_atm, flux_ben, flux_ri
             CASE ( 'air_pres' )    ; column(av)%cell_sheet => data(col)%air_pres
             CASE ( 'humidity' )    ; column(av)%cell_sheet => data(col)%humidity
             CASE ( 'evap' )        ; column(av)%cell_sheet => data(col)%evap
-
+            CASE ( 'biodrag' )     ; column(av)%cell => data(col)%biodrag
+            CASE ( 'bioextc' )     ; column(av)%cell => data(col)%bioextc
+            CASE ( 'solarshade' )  ; column(av)%cell_sheet => data(col)%solarshade
+            CASE ( 'windshade' )  ; column(av)%cell_sheet => data(col)%windshade
+            
             CASE ( 'taub' )        ; column(av)%cell_sheet => data(col)%layer_stress ! CAB? col_taub
 
             CASE ( 'sed_zones' )   ; column(av)%cell => data(col)%sed_zones
