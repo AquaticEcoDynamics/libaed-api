@@ -278,6 +278,19 @@ MODULE aed_api
    END TYPE api_col_data_t
    !#===========================================================#!
 
+   !#===========================================================#!
+   !* A structure defining a water column.                      *!
+   !*-----------------------------------------------------------*!
+   TYPE api_env_def_t
+      CHARACTER(:),POINTER :: name
+      CHARACTER(:),POINTER :: longname
+      CHARACTER(:),POINTER :: units
+      LOGICAL :: sheet
+      AED_REAL,POINTER :: data      => null()
+      AED_REAL,DIMENSION(:),POINTER :: datac => null()
+   END TYPE api_env_def_t
+   !#===========================================================#!
+
 #define BSSOCIATED(x) ( ASSOCIATED(data(1)%x) )
 
 !
@@ -389,6 +402,18 @@ MODULE aed_api
 
    AED_REAL :: dt_eff
    LOGICAL :: reinited = .FALSE.
+
+#ifdef f2003
+   USE, intrinsic :: iso_fortran_env, ONLY : stdin=>input_unit, &
+                                             stdout=>output_unit, &
+                                             stderr=>error_unit
+#else
+#  define stdin  5
+#  define stdout 6
+#  define stderr 0
+#endif
+   INTEGER :: log = stderr
+
 
   !-----------------------------------------------------------------------------
   INTERFACE
@@ -857,7 +882,7 @@ SUBROUTINE aed_set_model_env(env, ncols)
    IF (BSSOCIATED(sed_zone))       tv=aed_provide_sheet_global('sed_zone',      'current sediment zone', '-'         )
 
                                    tv=aed_provide_sheet_global('biodrag',       'biodrag',           ''              )
-                                   tv=aed_provide_sheet_global('extcrag',       'bioextc',           ''              )
+                                   tv=aed_provide_sheet_global('bioextc',       'bioextc',           ''              )
                                    tv=aed_provide_sheet_global('solarshade',    'solarshade',        ''              )
                                    tv=aed_provide_sheet_global('windshade',     'windshade',         ''              )
                                    tv=aed_provide_sheet_global('bathy',         'bathy',             'm above datum' )
@@ -914,6 +939,7 @@ SUBROUTINE aed_check_model_setup
             CASE ( 'air_temp' )    ; tvar%found = BSSOCIATED(air_temp)
             CASE ( 'air_pres' )    ; tvar%found = BSSOCIATED(air_pres)
             CASE ( 'humidity' )    ; tvar%found = BSSOCIATED(humidity)
+            CASE ( 'longwave' )    ; tvar%found = BSSOCIATED(longwave)
             CASE ( 'longitude' )   ; tvar%found = BSSOCIATED(longitude)
             CASE ( 'latitude' )    ; tvar%found = BSSOCIATED(latitude)
             CASE ( 'yearday' )     ; tvar%found = ASSOCIATED(yearday)
@@ -988,7 +1014,7 @@ SUBROUTINE define_column(column, col, top, flux_pel, flux_atm, flux_ben, flux_ri
 
       IF ( tvar%extern ) THEN !# global variable
          ev = ev + 1
-         SELECT CASE (tvar%name)
+         SELECT CASE ( TRIM(tvar%name) )
             CASE ( 'temperature' ) ; column(av)%cell => data(col)%temp
             CASE ( 'salinity' )    ; column(av)%cell => data(col)%salt
             CASE ( 'density' )     ; column(av)%cell => data(col)%rho
@@ -1020,6 +1046,7 @@ SUBROUTINE define_column(column, col, top, flux_pel, flux_atm, flux_ben, flux_ri
             CASE ( 'air_temp' )    ; column(av)%cell_sheet => data(col)%air_temp
             CASE ( 'air_pres' )    ; column(av)%cell_sheet => data(col)%air_pres
             CASE ( 'humidity' )    ; column(av)%cell_sheet => data(col)%humidity
+            CASE ( 'evap' )        ; column(av)%cell_sheet => data(col)%evap
 
             CASE ( 'taub' )        ; column(av)%cell_sheet => data(col)%layer_stress ! CAB? col_taub
 
@@ -1375,7 +1402,7 @@ CONTAINS
 
       IF ( tvar%extern ) THEN !# global variable
          ev = ev + 1
-         SELECT CASE (tvar%name)
+         SELECT CASE ( TRIM(tvar%name) )
             CASE ( 'temperature' ) ; column(av)%cell => aedZones(zon)%z_env(:)%z_temp
             CASE ( 'salinity' )    ; column(av)%cell => aedZones(zon)%z_env(:)%z_salt
             CASE ( 'density' )     ; column(av)%cell => aedZones(zon)%z_env(:)%z_rho
