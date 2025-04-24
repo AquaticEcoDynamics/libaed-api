@@ -764,8 +764,9 @@ SUBROUTINE aed_set_model_env(env, ncols)
    IF (need_bathy) THEN ; ALLOCATE(bathy(ncols))             ; bathy = zero_      ; ENDIF
 
    DO col=1,ncols
-      yearday  => env(col)%yearday
       timestep => env(col)%timestep
+
+      yearday  => env(col)%yearday
 
       data(col)%n_layers     =  env(col)%n_layers
       data(col)%col_num      =  col
@@ -1051,7 +1052,7 @@ SUBROUTINE define_column(column, col, top, flux_pel, flux_atm, flux_ben, flux_ri
             CASE ( 'bioextc' )     ; column(av)%cell => data(col)%bioextc
             CASE ( 'solarshade' )  ; column(av)%cell_sheet => data(col)%solarshade
             CASE ( 'windshade' )  ; column(av)%cell_sheet => data(col)%windshade
-            
+
             CASE ( 'taub' )        ; column(av)%cell_sheet => data(col)%layer_stress ! CAB? col_taub
 
             CASE ( 'sed_zones' )   ; column(av)%cell => data(col)%sed_zones
