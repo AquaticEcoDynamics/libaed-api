@@ -54,8 +54,8 @@
 #define SCH_VARIANT   3
 #define ELC_VARIANT   4
 
-!#define CUR_VARIANT   GLM_VARIANT
-#define CUR_VARIANT   SCH_VARIANT
+#define CUR_VARIANT   GLM_VARIANT
+!#define CUR_VARIANT   SCH_VARIANT
 
 
 !-------------------------------------------------------------------------------
@@ -109,7 +109,7 @@ MODULE aed_api
       LOGICAL  :: link_bottom_drag
       LOGICAL  :: ice
 
-      INTEGER  :: split_factor = 1 
+      INTEGER  :: split_factor = 1
       INTEGER  :: benthic_mode = 1
 
       AED_REAL :: rain_factor  = 1.
@@ -143,10 +143,10 @@ MODULE aed_api
    TYPE aed_env_t
       INTEGER                       :: n_layers
 
-      !# time and location 
+      !# time and location
       AED_REAL,POINTER              :: timestep       => null()
       AED_REAL,POINTER              :: yearday        => null()
-      AED_REAL,POINTER              :: longitude      => null() 
+      AED_REAL,POINTER              :: longitude      => null()
       AED_REAL,POINTER              :: latitude       => null()
       INTEGER, POINTER              :: col_num        => null()
 
@@ -202,8 +202,8 @@ MODULE aed_api
 
       !# bottom sediment zone classification
       AED_REAL,DIMENSION(:),POINTER :: sed_zones      => null()  !# sedzones are an odd mix - for GLM a zone will be different at
-      AED_REAL,POINTER              :: sed_zone       => null()  !# different levels - while for others a column would be all int one zone
-      INTEGER, POINTER              :: mat_id         => null()
+      AED_REAL,POINTER :: sed_zone     => null()  !# different levels - while for others a column would be all one zone
+      AED_REAL,POINTER :: mat_id       => null()
 
       !# inforation for dry column / groundwater calculations
       AED_REAL,POINTER              :: bathy          => null()
@@ -235,10 +235,11 @@ MODULE aed_api
       AED_REAL,DIMENSION(:),  POINTER :: cc_diag_hz     => null()  !# (n_diag_ben_vars)
 
       !# Column index, location and status
-      AED_REAL                        :: col_num
-     !INTEGER, POINTER                :: col_num        => null()
+      AED_REAL,POINTER                :: yearday        => null()
       AED_REAL,POINTER                :: longitude      => null()
       AED_REAL,POINTER                :: latitude       => null()
+      AED_REAL                        :: col_num
+     !INTEGER, POINTER                :: col_num        => null()
       LOGICAL,POINTER                 :: active         => null()
 
       !# Arrays storing/pointing to surface (above water) environment
@@ -249,7 +250,7 @@ MODULE aed_api
       AED_REAL,POINTER                :: wind           => null()
       AED_REAL,POINTER                :: rain           => null()
       AED_REAL,POINTER                :: evap           => null()
-      AED_REAL,POINTER                :: I_0            => null() 
+      AED_REAL,POINTER                :: I_0            => null()
 
       !# Arrays storing/pointing to the grid/domain information
       AED_REAL,POINTER                :: col_depth      => null() !# total depth of column (sheet)
@@ -262,7 +263,7 @@ MODULE aed_api
       !# Arrays storing/pointing to water column environment
       AED_REAL,DIMENSION(:),POINTER   :: temp           => null()
       AED_REAL,DIMENSION(:),POINTER   :: salt           => null()
-      AED_REAL,DIMENSION(:),POINTER   :: cvel           => null()  
+      AED_REAL,DIMENSION(:),POINTER   :: cvel           => null()
       AED_REAL,DIMENSION(:),POINTER   :: pres           => null()
       AED_REAL,DIMENSION(:),POINTER   :: rho            => null()
       AED_REAL,DIMENSION(:),POINTER   :: rad            => null()
@@ -288,13 +289,14 @@ MODULE aed_api
 
       AED_REAL,DIMENSION(:),POINTER   :: sed_zones      => null()
       AED_REAL,POINTER                :: sed_zone       => null()
-      INTEGER, POINTER                :: mat_id         => null()
+      AED_REAL,POINTER                :: mat_id         => null()
 
       !# Arrays storing/pointing to riparian environment
       AED_REAL,POINTER                :: bathy          => null()
       AED_REAL,POINTER                :: datum          => null()
       AED_REAL,POINTER                :: col_height     => null()
       AED_REAL,POINTER                :: nearest_height => null()
+      INTEGER, POINTER                :: nearest_active => null()
 
       !# Arrays storing/pointing information for feedback to host
       AED_REAL,DIMENSION(:),POINTER   :: biodrag        => null()
@@ -350,28 +352,18 @@ MODULE aed_api
 !  LOGICAL :: link_water_density = .FALSE.
    LOGICAL :: link_water_clarity = .FALSE.
    LOGICAL :: link_ext_par = .FALSE.
+
    LOGICAL :: do_2d_atm_flux = .TRUE.
 
    LOGICAL :: bottom_one = .TRUE.
-
-!  AED_REAL,DIMENSION(:),POINTER :: sed_zones => null()
 
    !-------------------------------------------------------------
    !# External variables
    !-------------------------------------------------------------
    TYPE(api_col_data_t),DIMENSION(:),ALLOCATABLE,TARGET :: data
-   TYPE(aed_column_t),DIMENSION(:,:),ALLOCATABLE,TARGET :: all_cols !# (nvars, ncols)
-
    !# Arrays for environmental variables (used if they are not supplied externally)
-!  AED_REAL,DIMENSION(:),POINTER :: nir => null()
-!  AED_REAL,DIMENSION(:),POINTER :: par => null()
-!  AED_REAL,DIMENSION(:),POINTER :: uva => null()
-!  AED_REAL,DIMENSION(:),POINTER :: uvb => null()
    AED_REAL,DIMENSION(:,:),ALLOCATABLE,TARGET :: lpar
-
-!  INTEGER, DIMENSION(:,:),POINTER :: mat_id => null()
-!  INTEGER, DIMENSION(:,:),POINTER :: col_num => null()
-!  LOGICAL, POINTER :: active => null()
+!  AED_REAL,DIMENSION(:),  ALLOCATABLE,TARGET :: matz
 
 !  !# Maps to nearest cell with water (for riparian exchange)
 ! may be tuflow specific
@@ -395,12 +387,13 @@ MODULE aed_api
 !  AED_REAL,POINTER :: longitude => null()
 !  AED_REAL,POINTER :: latitude => null()
 
-   AED_REAL,DIMENSION(:,:),POINTER :: biodrag
-   AED_REAL,DIMENSION(:,:),POINTER :: bioextc
-   AED_REAL,DIMENSION(:),  POINTER :: solarshade
-   AED_REAL,DIMENSION(:),  POINTER :: windshade
-   AED_REAL,DIMENSION(:),  POINTER :: bathy
-   AED_REAL,DIMENSION(:),  POINTER :: rainloss
+   AED_REAL,DIMENSION(:),  POINTER :: bathy      => null()
+
+   AED_REAL,DIMENSION(:,:),POINTER :: biodrag    => null()
+   AED_REAL,DIMENSION(:,:),POINTER :: bioextc    => null()
+   AED_REAL,DIMENSION(:),  POINTER :: solarshade => null()
+   AED_REAL,DIMENSION(:),  POINTER :: windshade  => null()
+   AED_REAL,DIMENSION(:),  POINTER :: rainloss   => null()
 
    !# Particle groups
 !  INTEGER :: num_groups
@@ -430,33 +423,45 @@ MODULE aed_api
    AED_REAL :: dt_eff
    LOGICAL :: reinited = .FALSE.
 
+   TYPE(aed_column_t),DIMENSION(:,:),ALLOCATABLE,TARGET :: all_cols !# (n_aed_vars, ncols)
+   TYPE(aed_column_t),DIMENSION(:,:),ALLOCATABLE,TARGET :: zon_cols !# (n_aed_vars, nzones)
+   AED_REAL,ALLOCATABLE,TARGET :: flux_ben(:)          !# (n_vars+n_vars_ben)
+   AED_REAL,ALLOCATABLE,TARGET :: flux_atm(:)          !# (n_vars+n_vars_ben)
+   AED_REAL,ALLOCATABLE,TARGET :: flux_rip(:)          !# (n_vars+n_vars_ben)
+   AED_REAL,ALLOCATABLE,TARGET :: flux_zon(:,:)        !# (n_vars+n_vars_ben, aed_n_zones)
+   AED_REAL,ALLOCATABLE,TARGET :: flux_pel(:,:)        !# (n_vars+n_vars_ben, MAX(n_layers, aed_n_zones))
+   AED_REAL,DIMENSION(:,:),ALLOCATABLE :: flux_pel_pre !# (n_vars+n_vars_ben, MAX(n_layers, aed_n_zones))
+   AED_REAL,DIMENSION(:,:),ALLOCATABLE :: flux_pel_z   !# (n_vars+n_vars_ben, MAX(n_layers, aed_n_zones))
+
 !  !# 2D env vars (sheet)
-!  ( 'yearday',       'yearday',                'day'            )
 !  ( 'timestep',      'timestep',               'seconds'        )
+!  ( 'yearday',       'yearday',                'day'            )
 !  ( 'longitude',     'longitude',              'radians'        )
 !  ( 'latitude',      'latitude',               'radians'        )
-!  ( 'par_sf',        'par_sf',                 'W/m2'           )
-!  ( 'col_depth',     'column water depth',     'm above bottom' )
-!  ( 'wind_speed',    'wind speed',             'm/s'            )
+!  ( 'col_num',       'column number',          ''               )
+!
+!  ( 'longwave',      'longwave',               'W/m2'           )
 !  ( 'air_temp',      'air temperature',        'celsius'        )
 !  ( 'air_pres',      'air pressure',           'Pa'             )
+!  ( 'humidity',      'relative humidity',      ''               )
+!  ( 'wind_speed',    'wind speed',             'm/s'            )
 !  ( 'rain',          'rainfall',               'm/s'            )
 !  ( 'evap',          'evaporation',            'm/s'            )
-!  ( 'humidity',      'relative humidity',      ''               )
-!  ( 'longwave',      'longwave',               'W/m2'           )
+!
+!  ( 'par_sf',        'par_sf',                 'W/m2'           )
+!  ( 'col_depth',     'column water depth',     'm above bottom' )
 !  ( 'taub',          'layer stress',           'N/m2'           )
-!  ( 'col_num',       'column number',          ''               )
 !  ( 'nearest_active','nearest active',         ''               )
 !  ( 'nearest_depth', 'nearest depth',          'm'              )
-!  ( 'material',      'material',               ''               )
 !  ( 'sed_zone',      'current sediment zone',  ''               )
+!  ( 'material',      'material',               ''               )
+!  ( 'bathy',         'bathy',                  'm above datum'  )
 !  ( 'biodrag',       'biodrag',                ''               )
 !  ( 'bioextc',       'bioextc',                ''               )
 !  ( 'solarshade',    'solarshade',             ''               )
 !  ( 'windshade',     'windshade',              ''               )
-!  ( 'bathy',         'bathy',                  'm above datum'  )
 !  ( 'rainloss',      'rain loss',              'm/s'            )
-
+!
 !  !# 3D env vars
 !  ( 'temperature',   'temperature',            'celsius'        )
 !  ( 'salinity',      'salinity',               'g/kg'           )
@@ -515,7 +520,7 @@ CONTAINS
 !###############################################################################
 SUBROUTINE aed_show_vars
 !-------------------------------------------------------------------------------
-! Print summary (names and attributes) of configured AED variables 
+! Print summary (names and attributes) of configured AED variables
 !-------------------------------------------------------------------------------
 !ARGUMENTS
 !
@@ -728,7 +733,7 @@ SUBROUTINE aed_set_coupling(conf)
    link_bottom_drag = conf%link_bottom_drag
 
    split_factor = conf%split_factor
-   if (split_factor == 0) split_factor = 1
+   IF (split_factor == 0) split_factor = 1
    benthic_mode = conf%benthic_mode
 
    rain_factor = conf%rain_factor
@@ -751,11 +756,32 @@ SUBROUTINE aed_set_model_data(dat, ncols, nlevs)
    TYPE(aed_data_t),INTENT(in) :: dat(ncols)
 !
 !LOCALS
-   INTEGER :: av, v, sv, status, col
+   INTEGER :: av, v, sv, status, col, zon
    TYPE(aed_variable_t),POINTER :: tvar
 !
 !-------------------------------------------------------------------------------
 !BEGIN
+   IF (nlevs > MaxLayers) MaxLayers = nlevs
+
+   IF (.NOT. ALLOCATED(all_cols) ) THEN
+      ALLOCATE(all_cols(n_aed_vars, ncols),stat=status)
+      IF (status /= 0) STOP 'allocate_memory(): Error allocating "all_cols"'
+   ENDIF
+   IF (.NOT. ALLOCATED(zon_cols) ) THEN
+      ALLOCATE(zon_cols(n_aed_vars, aed_n_zones),stat=status)
+      IF (status /= 0) STOP 'allocate_memory(): Error allocating "zon_cols"'
+   ENDIF
+
+   IF (.NOT.ALLOCATED(flux_zon))   ALLOCATE(flux_zon(n_aed_vars, aed_n_zones))
+   IF (.NOT.ALLOCATED(flux_ben))   ALLOCATE(flux_ben(n_aed_vars))
+   IF (.NOT.ALLOCATED(flux_atm))   ALLOCATE(flux_atm(n_aed_vars))
+   IF (.NOT.ALLOCATED(flux_rip))   ALLOCATE(flux_rip(n_aed_vars))
+
+   IF (.NOT.ALLOCATED(flux_pel))     ALLOCATE(flux_pel(    n_aed_vars, MAX(MaxLayers, aed_n_zones)))
+   IF (.NOT.ALLOCATED(flux_pel_pre)) ALLOCATE(flux_pel_pre(n_aed_vars, MAX(MaxLayers, aed_n_zones)))
+   IF (.NOT.ALLOCATED(flux_pel_z))   ALLOCATE(flux_pel_z(  n_aed_vars, MAX(MaxLayers, aed_n_zones)))
+
+   !# Should have been done in the env setup
    IF (.NOT. ALLOCATED(data) ) ALLOCATE(data(ncols))
    !----------------------------------------------------------------------------
    !# Set pointers to state variable and diagnist variables arrays
@@ -766,7 +792,6 @@ SUBROUTINE aed_set_model_data(dat, ncols, nlevs)
       data(col)%cc_diag    => dat(col)%cc_diag
       data(col)%cc_diag_hz => dat(col)%cc_diag_hz
    ENDDO
-   IF (nlevs > MaxLayers) MaxLayers = nlevs
 
    ALLOCATE(min_((n_vars + n_vars_ben))) ; ALLOCATE(max_((n_vars + n_vars_ben)))
 
@@ -801,6 +826,13 @@ SUBROUTINE aed_set_model_data(dat, ncols, nlevs)
 
 !  !# Trigger an error if we don't have all we need.
 !  CALL aed_check_model_setup
+
+   DO col=1, nCols
+      CALL define_column(all_cols(:,col), col)
+   ENDDO
+   DO zon=1,aed_n_zones
+      CALL define_zone_column(zon_cols(:,zon), zon)
+   ENDDO
 END SUBROUTINE aed_set_model_data
 !+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 
@@ -815,7 +847,7 @@ SUBROUTINE aed_set_model_env(env, ncols)
    TYPE(aed_env_t),INTENT(in) :: env(ncols)
 !
 !LOCALS
-   INTEGER :: tv, col
+   INTEGER :: tv, col, status = 0
    LOGICAL :: no_biodg = .FALSE., no_bioex = .FALSE.
    LOGICAL :: no_sshad = .FALSE., no_wshad = .FALSE.
    LOGICAL :: no_rianl = .FALSE., no_bathy = .FALSE.
@@ -823,16 +855,19 @@ SUBROUTINE aed_set_model_env(env, ncols)
 !-------------------------------------------------------------------------------
 !BEGIN
    !# Allocate main AED column arrays
-   IF (.NOT. ALLOCATED(data) ) ALLOCATE(data(ncols))
-   IF (.NOT. ALLOCATED(all_cols) ) ALLOCATE(all_cols(n_aed_vars, ncols))
+   IF (.NOT. ALLOCATED(data) ) THEN
+      ALLOCATE(data(ncols),stat=status)
+      IF (status /= 0) STOP 'allocate_memory(): Error allocating "data"'
+   ENDIF
 
    !# Check whether external light field is to be used, or allocate locally
    IF (.NOT. link_ext_par) ALLOCATE(lpar(MaxLayers,ncols))
+!  ALLOCATE(matz(ncols)) ; matz(:) = zero_
 
-   !# Set effective time/step 
+   !# Set effective time/step
    dt_eff = env(1)%timestep/FLOAT(split_factor)  ! was timestep/FLOAT(split_factor)
 
-   !# Check for "optional" environment/feedback vars that were not provided 
+   !# Check for "optional" environment/feedback vars that were not provided
    !  and allocate locally
    no_bathy = (.NOT.ASSOCIATED(env(1)%bathy))
    no_biodg = (.NOT.ASSOCIATED(env(1)%biodrag))
@@ -849,16 +884,17 @@ SUBROUTINE aed_set_model_env(env, ncols)
    IF (no_rianl) THEN ; ALLOCATE(rainloss(ncols))          ; rainloss = zero_   ; ENDIF
 
    !# Set local AED column data structure to point to environment vars from host
-   DO col=1,ncols
+   timestep => env(1)%timestep
+   yearday  => env(1)%yearday
 
-      timestep => env(col)%timestep   !MH maybe lets change this to dt_eff (as it shouldnt change in env(col))
-      yearday  => env(col)%yearday
+   DO col=1,ncols
 
       data(col)%n_layers     =  env(col)%n_layers
 
+      data(col)%yearday      => env(col)%yearday
       data(col)%longitude    => env(col)%longitude
       data(col)%latitude     => env(col)%latitude
-      data(col)%col_num      =  col  !  => env(col)%col_num
+      data(col)%col_num      =  FLOAT(col)  !  => env(col)%col_num
 
       data(col)%active       => env(col)%active
 
@@ -886,22 +922,25 @@ SUBROUTINE aed_set_model_env(env, ncols)
       data(col)%rad          => env(col)%rad
 
       data(col)%extc         => env(col)%extc
-     !data(col)%par          => env(col)%par
       IF (link_ext_par) THEN
-         data(col)%par        => env(col)%par
+         data(col)%par       => env(col)%par
       ELSE
-         data(col)%par        => lpar(:,col)
+         data(col)%par       => lpar(:,col)
       ENDIF
       data(col)%nir          => env(col)%nir
       data(col)%uva          => env(col)%uva
       data(col)%uvb          => env(col)%uvb
-       
-      data(col)%tss          => env(col)%tss
-      data(col)%ss1          => env(col)%ss1
-      data(col)%ss2          => env(col)%ss2
-      data(col)%ss3          => env(col)%ss3
-      data(col)%ss4          => env(col)%ss4
-      
+
+      data(col)%tss => env(col)%tss
+      data(col)%ss1 => env(col)%ss1
+      data(col)%ss2 => env(col)%ss2
+      data(col)%ss3 => env(col)%ss3
+      data(col)%ss4 => env(col)%ss4
+!      IF (ASSOCIATED(env(col)%ss1)) data(col)%ss1 => env(col)%ss1
+!      IF (ASSOCIATED(env(col)%ss2)) data(col)%ss2 => env(col)%ss2
+!      IF (ASSOCIATED(env(col)%ss3)) data(col)%ss3 => env(col)%ss3
+!      IF (ASSOCIATED(env(col)%ss4)) data(col)%ss4 => env(col)%ss4
+
       data(col)%ustar_bed    => env(col)%ustar_bed
       data(col)%wv_uorb      => env(col)%wv_uorb
       data(col)%wv_t         => env(col)%wv_t
@@ -913,81 +952,85 @@ SUBROUTINE aed_set_model_env(env, ncols)
       data(col)%mat_id       => env(col)%mat_id
 
       IF (no_bathy) THEN ; data(col)%bathy      => bathy(col)
-      ELSE ;                 data(col)%bathy      => env(col)%bathy      ; ENDIF
-      !!! datum, col_height, nearest_height, nearest_active
+      ELSE ;               data(col)%bathy      => env(col)%bathy      ; ENDIF
+
+      data(col)%datum => env(col)%datum
+      data(col)%col_height => env(col)%col_height
+      data(col)%nearest_height => env(col)%nearest_height
+      data(col)%nearest_active => env(col)%nearest_active
 
       IF (no_biodg) THEN ; data(col)%biodrag    => biodrag(:,col)
-      ELSE ;                 data(col)%biodrag    => env(col)%biodrag    ; ENDIF
+      ELSE ;               data(col)%biodrag    => env(col)%biodrag    ; ENDIF
       IF (no_bioex) THEN ; data(col)%bioextc    => bioextc(:,col)
-      ELSE ;                 data(col)%bioextc    => env(col)%bioextc    ; ENDIF
+      ELSE ;               data(col)%bioextc    => env(col)%bioextc    ; ENDIF
       IF (no_sshad) THEN ; data(col)%solarshade => solarshade(col)
-      ELSE ;                 data(col)%solarshade => env(col)%solarshade ; ENDIF
+      ELSE ;               data(col)%solarshade => env(col)%solarshade ; ENDIF
       IF (no_wshad) THEN ; data(col)%windshade  => windshade(col)
-      ELSE ;                 data(col)%windshade  => env(col)%windshade  ; ENDIF
+      ELSE ;               data(col)%windshade  => env(col)%windshade  ; ENDIF
       IF (no_rianl) THEN ; data(col)%rainloss   => rainloss(col)
-      ELSE ;                 data(col)%rainloss   => env(col)%rainloss   ; ENDIF
+      ELSE ;               data(col)%rainloss   => env(col)%rainloss   ; ENDIF
    ENDDO
 
    !# Register module accesible environment variables to AED core variable list
-   IF (ASSOCIATED(timestep))       tv=aed_provide_sheet_global('timestep',      'timestep',          'seconds'       )
-   IF (ASSOCIATED(yearday))        tv=aed_provide_sheet_global('yearday',       'yearday',           'day'           )
-   IF (BSSOCIATED(longitude))      tv=aed_provide_sheet_global('longitude',     'longitude',         'radians'       )
-   IF (BSSOCIATED(latitude))       tv=aed_provide_sheet_global('latitude',      'latitude',          'radians'       )
-                                   tv=aed_provide_sheet_global('col_num',       'column number',     '-'             )
-                                                              
-   IF (BSSOCIATED(longwave))       tv=aed_provide_sheet_global('longwave',      'longwave',          'W/m2'          )
-   IF (BSSOCIATED(air_temp))       tv=aed_provide_sheet_global('air_temp',      'air temperature',   'celsius'       )
-   IF (BSSOCIATED(air_pres))       tv=aed_provide_sheet_global('air_pres',      'air pressure',      'Pa'            )
-   IF (BSSOCIATED(humidity))       tv=aed_provide_sheet_global('humidity',      'relative humidity', '-'             )
-   IF (BSSOCIATED(wind))           tv=aed_provide_sheet_global('wind_speed',    'wind speed',        'm/s'           )
-   IF (BSSOCIATED(rain))           tv=aed_provide_sheet_global('rain',          'rainfall',          'm/s'           )
-   IF (BSSOCIATED(evap))           tv=aed_provide_sheet_global('evap',          'evaporation',       'm/s'           )
-   IF (BSSOCIATED(I_0))            tv=aed_provide_sheet_global('par_sf',        'par_sf',            'W/m2'   )
+   IF (ASSOCIATED(timestep))       tv=aed_provide_sheet_global('timestep',      'timestep',              'seconds' )
+   IF (ASSOCIATED(yearday))        tv=aed_provide_sheet_global('yearday',       'yearday',               'day'     )
+   IF (BSSOCIATED(longitude))      tv=aed_provide_sheet_global('longitude',     'longitude',             'radians' )
+   IF (BSSOCIATED(latitude))       tv=aed_provide_sheet_global('latitude',      'latitude',              'radians' )
+                                   tv=aed_provide_sheet_global('col_num',       'column number',         '-'       )
 
-   IF (BSSOCIATED(col_depth))      tv=aed_provide_sheet_global('col_depth',     'column water depth','m above bottom')
-   IF (BSSOCIATED(depth))          tv=aed_provide_global      ('depth',         'depth',                 'm'      )
-   IF (BSSOCIATED(area))           tv=aed_provide_global      ('layer_area',    'layer area',            'm2'     )
-   IF (BSSOCIATED(dz))             tv=aed_provide_global      ('layer_ht',      'layer heights',         'm'      )
+   IF (BSSOCIATED(longwave))       tv=aed_provide_sheet_global('longwave',      'longwave',              'W/m2'    )
+   IF (BSSOCIATED(air_temp))       tv=aed_provide_sheet_global('air_temp',      'air temperature',       'celsius' )
+   IF (BSSOCIATED(air_pres))       tv=aed_provide_sheet_global('air_pres',      'air pressure',          'Pa'      )
+   IF (BSSOCIATED(humidity))       tv=aed_provide_sheet_global('humidity',      'relative humidity',     '-'       )
+   IF (BSSOCIATED(wind))           tv=aed_provide_sheet_global('wind_speed',    'wind speed',            'm/s'     )
+   IF (BSSOCIATED(rain))           tv=aed_provide_sheet_global('rain',          'rainfall',              'm/s'     )
+   IF (BSSOCIATED(evap))           tv=aed_provide_sheet_global('evap',          'evaporation',           'm/s'     )
+   IF (BSSOCIATED(I_0))            tv=aed_provide_sheet_global('par_sf',        'par_sf',                'W/m2'    )
 
-   IF (BSSOCIATED(temp))           tv=aed_provide_global      ('temperature',   'temperature',           'celsius')
-   IF (BSSOCIATED(salt))           tv=aed_provide_global      ('salinity',      'salinity',              'g/kg'   )
-   IF (BSSOCIATED(cvel))           tv=aed_provide_global      ('cell_vel',      'cell velocity',         'm/s'    )
-   IF (BSSOCIATED(pres))           tv=aed_provide_global      ('pressure',      'pressure',              ''       )
-   IF (BSSOCIATED(rho))            tv=aed_provide_global      ('density',       'density',               'kg/m3'  )
+   IF (BSSOCIATED(col_depth))      tv=aed_provide_sheet_global('col_depth',     'column water depth',    'm above bottom')
+   IF (BSSOCIATED(depth))          tv=aed_provide_global      ('depth',         'depth',                 'm'       )
+   IF (BSSOCIATED(area))           tv=aed_provide_global      ('layer_area',    'layer area',            'm2'      )
+   IF (BSSOCIATED(dz))             tv=aed_provide_global      ('layer_ht',      'layer heights',         'm'       )
 
-   IF (BSSOCIATED(extc))           tv=aed_provide_global      ('extc_coef',     'extinction coefficient','/m'     )
-                                   tv=aed_provide_global      ('nir',           'nir',               'W/m2'   )
-                                   tv=aed_provide_global      ('par',           'par',               'W/m2'   )
-                                   tv=aed_provide_global      ('uva',           'uva',               'W/m2'   )
-                                   tv=aed_provide_global      ('uvb',           'uvb',               'W/m2'   )
+   IF (BSSOCIATED(temp))           tv=aed_provide_global      ('temperature',   'temperature',           'celsius' )
+   IF (BSSOCIATED(salt))           tv=aed_provide_global      ('salinity',      'salinity',              'g/kg'    )
+   IF (BSSOCIATED(cvel))           tv=aed_provide_global      ('cell_vel',      'cell velocity',         'm/s'     )
+   IF (BSSOCIATED(pres))           tv=aed_provide_global      ('pressure',      'pressure',              ''        )
+   IF (BSSOCIATED(rho))            tv=aed_provide_global      ('density',       'density',               'kg/m3'   )
+   IF (BSSOCIATED(rad))            tv=aed_provide_global      ('rad',           'radiation',             'W/m2'    )
 
-   IF (BSSOCIATED(tss))            tv=aed_provide_global      ('tss',           'tss',                   'g/m3'   )
-   IF (BSSOCIATED(ss1))            tv=aed_provide_global      ('ss1',           'ss1',                   'g/m3'   )
-   IF (BSSOCIATED(ss2))            tv=aed_provide_global      ('ss2',           'ss2',                   'g/m3'   )
-   IF (BSSOCIATED(ss3))            tv=aed_provide_global      ('ss3',           'ss3',                   'g/m3'   )
-   IF (BSSOCIATED(ss4))            tv=aed_provide_global      ('ss4',           'ss4',                   'g/m3'   )
+   IF (BSSOCIATED(extc))           tv=aed_provide_global      ('extc_coef',     'extinction coefficient','/m'      )
+                                   tv=aed_provide_global      ('nir',           'nir',                   'W/m2'    )
+                                   tv=aed_provide_global      ('par',           'par',                   'W/m2'    )
+                                   tv=aed_provide_global      ('uva',           'uva',                   'W/m2'    )
+                                   tv=aed_provide_global      ('uvb',           'uvb',                   'W/m2'    )
 
-   IF (BSSOCIATED(layer_stress))   tv=aed_provide_sheet_global('taub',          'layer stress',      'N/m2'          )
+   IF (BSSOCIATED(tss))            tv=aed_provide_global      ('tss',           'tss',                   'g/m3'    )
+   IF (BSSOCIATED(ss1))            tv=aed_provide_global      ('ss1',           'ss1',                   'g/m3'    )
+   IF (BSSOCIATED(ss2))            tv=aed_provide_global      ('ss2',           'ss2',                   'g/m3'    )
+   IF (BSSOCIATED(ss3))            tv=aed_provide_global      ('ss3',           'ss3',                   'g/m3'    )
+   IF (BSSOCIATED(ss4))            tv=aed_provide_global      ('ss4',           'ss4',                   'g/m3'    )
 
-   IF (BSSOCIATED(sed_zones))      tv=aed_provide_global      ('sed_zones',     'sediment zones',        '-'      )
-   IF (BSSOCIATED(sed_zone))       tv=aed_provide_sheet_global('sed_zone',      'current sediment zone', '-'         )
-   IF (BSSOCIATED(mat_id))         tv=aed_provide_sheet_global('material',      'material',          '-'             )
+   IF (BSSOCIATED(layer_stress))   tv=aed_provide_sheet_global('taub',          'layer stress',          'N/m2'    )
 
-                                   tv=aed_provide_sheet_global('bathy',         'bathy',             'm above datum' )
-   IF (ASSOCIATED(nearest_active)) tv=aed_provide_sheet_global('nearest_active','nearest active',    '-'             )
-   IF (ASSOCIATED(nearest_depth))  tv=aed_provide_sheet_global('nearest_depth', 'nearest depth',     'm'             )
+   IF (BSSOCIATED(sed_zones))      tv=aed_provide_global      ('sed_zones',     'sediment zones',        '-'       )
+   IF (BSSOCIATED(sed_zone))       tv=aed_provide_sheet_global('sed_zone',      'current sediment zone', '-'       )
+   IF (BSSOCIATED(mat_id))         tv=aed_provide_sheet_global('material',      'material',              '-'       )
 
-                                   tv=aed_provide_global      ('biodrag',       'biodrag',           ''              )
-                                   tv=aed_provide_global      ('bioextc',       'bioextc',           ''              )
-                                   tv=aed_provide_sheet_global('solarshade',    'solarshade',        ''              )
-                                   tv=aed_provide_sheet_global('windshade',     'windshade',         ''              )
-                                   tv=aed_provide_sheet_global('rainloss',      'rain loss',         'm/s'           )
+                                   tv=aed_provide_sheet_global('bathy',         'bathy',                 'm above datum' )
+   IF (ASSOCIATED(nearest_active)) tv=aed_provide_sheet_global('nearest_active','nearest active',        '-'       )
+   IF (ASSOCIATED(nearest_depth))  tv=aed_provide_sheet_global('nearest_depth', 'nearest depth',         'm'       )
+
+                                   tv=aed_provide_global      ('biodrag',       'biodrag',               ''        )
+                                   tv=aed_provide_global      ('bioextc',       'bioextc',               ''        )
+                                   tv=aed_provide_sheet_global('solarshade',    'solarshade',            ''        )
+                                   tv=aed_provide_sheet_global('windshade',     'windshade',             ''        )
+                                   tv=aed_provide_sheet_global('rainloss',      'rain loss',             'm/s'     )
 
    !# env vars currently not made available
     !active
     !col_area
     !height
-    !rad
     !ustar_bed
     !wv_uorb
     !wv_t
@@ -995,7 +1038,7 @@ SUBROUTINE aed_set_model_env(env, ncols)
     !bathy
     !datum
     !col_height
-                           
+
 END SUBROUTINE aed_set_model_env
 !+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 
@@ -1008,8 +1051,7 @@ SUBROUTINE aed_check_model_setup
 !ARGUMENTS
 !
 !LOCALS
-   INTEGER :: av
-   INTEGER :: v, d, sv, sd, ev, err_count
+   INTEGER :: av, v, d, sv, sd, ev, err_count
    TYPE(aed_variable_t),POINTER :: tvar
 !
 !-------------------------------------------------------------------------------
@@ -1031,8 +1073,6 @@ SUBROUTINE aed_check_model_setup
             CASE ( 'col_num' )     ; tvar%found = .TRUE.
            !CASE ( 'col_num' )     ; tvar%found = BSSOCIATED(col_num)
 
-            CASE ( 'active' )      ; tvar%found = BSSOCIATED(active)
-               
             CASE ( 'longwave' )    ; tvar%found = BSSOCIATED(longwave)
             CASE ( 'air_temp' )    ; tvar%found = BSSOCIATED(air_temp)
             CASE ( 'air_pres' )    ; tvar%found = BSSOCIATED(air_pres)
@@ -1050,15 +1090,16 @@ SUBROUTINE aed_check_model_setup
             CASE ( 'temperature' ) ; tvar%found = BSSOCIATED(temp)
             CASE ( 'salinity' )    ; tvar%found = BSSOCIATED(salt)
             CASE ( 'cell_vel' )    ; tvar%found = BSSOCIATED(cvel)
-            CASE ( 'density' )     ; tvar%found = BSSOCIATED(rho)
             CASE ( 'pressure' )    ; tvar%found = BSSOCIATED(pres)
-            
+            CASE ( 'density' )     ; tvar%found = BSSOCIATED(rho)
+            CASE ( 'rad' )         ; tvar%found = BSSOCIATED(rad)
+
             CASE ( 'extc_coef' )   ; tvar%found = BSSOCIATED(extc)
             CASE ( 'par' )         ; tvar%found = BSSOCIATED(par)
             CASE ( 'nir' )         ; tvar%found = BSSOCIATED(nir)
             CASE ( 'uva' )         ; tvar%found = BSSOCIATED(uva)
             CASE ( 'uvb' )         ; tvar%found = BSSOCIATED(uvb)
-            
+
             CASE ( 'tss' )         ; tvar%found = BSSOCIATED(tss)
             CASE ( 'ss1' )         ; tvar%found = BSSOCIATED(ss1)
             CASE ( 'ss2' )         ; tvar%found = BSSOCIATED(ss2)
@@ -1081,7 +1122,7 @@ SUBROUTINE aed_check_model_setup
             CASE ( 'windshade' )   ; tvar%found = BSSOCIATED(windshade)
             CASE ( 'rainloss' )    ; tvar%found = BSSOCIATED(rainloss)
 
-            CASE DEFAULT ; print*,"ERROR: external variable "//TRIM(tvar%name)//" not found."
+            CASE DEFAULT ; print*,"ERROR: external variable "//TRIM(tvar%name)//" not found. Check host compatibility."
                            err_count = err_count + 1
          END SELECT
       ELSEIF ( tvar%diag ) THEN  !# Diagnostic variable
@@ -1108,23 +1149,19 @@ SUBROUTINE aed_check_model_setup
    IF ( n_vars_diag < d ) print *,"More diag vars than expected"
    IF ( n_vars_diag_sheet < sd ) print *,"More sheet diag vars than expected"
 
-   IF ( err_count > 0 ) CALL STOPIT("*** Errors in configuration")
+   IF ( err_count > 0 ) CALL STOPIT("*** ERRORS IN CONFIGURATION")
 END SUBROUTINE aed_check_model_setup
 !+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 
 
 !###############################################################################
-SUBROUTINE define_column(column, col, top, flux_pel, flux_atm, flux_ben, flux_rip)
+SUBROUTINE define_column(icolm, col)
 !-------------------------------------------------------------------------------
 ! Set up the current column pointers
 !-------------------------------------------------------------------------------
 !ARGUMENTS
-   TYPE (aed_column_t), INTENT(inout) :: column(:)
-   INTEGER, INTENT(in) :: col, top
-   AED_REAL, TARGET, INTENT(inout) :: flux_pel(:,:) !# (n_vars, n_layers)
-   AED_REAL, TARGET, INTENT(inout) :: flux_atm(:)   !# (n_vars)
-   AED_REAL, TARGET, INTENT(inout) :: flux_ben(:)   !# (n_vars)
-   AED_REAL, TARGET, INTENT(inout) :: flux_rip(:)   !# (n_vars)
+   TYPE (aed_column_t), INTENT(inout) :: icolm(:)
+   INTEGER, INTENT(in) :: col
 !
 !LOCALS
    INTEGER :: av
@@ -1139,91 +1176,93 @@ SUBROUTINE define_column(column, col, top, flux_pel, flux_atm, flux_ben, flux_ri
 
       IF ( tvar%extern ) THEN !# global variable
          ev = ev + 1
-         SELECT CASE ( TRIM(tvar%name) )
-            CASE ( 'timestep' )    ; column(av)%cell_sheet => timestep
-            CASE ( 'yearday' )     ; column(av)%cell_sheet => yearday
-            CASE ( 'longitude' )   ; column(av)%cell_sheet => data(col)%longitude
-            CASE ( 'latitude' )    ; column(av)%cell_sheet => data(col)%latitude
-            CASE ( 'col_num' )     ; column(av)%cell_sheet => data(col)%col_num
+         SELECT CASE (tvar%name)
+            CASE ( 'timestep' )    ; icolm(av)%cell_sheet => timestep
+            CASE ( 'yearday' )     ; icolm(av)%cell_sheet => data(col)%yearday   !yearday
+            CASE ( 'longitude' )   ; icolm(av)%cell_sheet => data(col)%longitude
+            CASE ( 'latitude' )    ; icolm(av)%cell_sheet => data(col)%latitude
+            CASE ( 'col_num' )     ; icolm(av)%cell_sheet => data(col)%col_num
 
-            CASE ( 'longwave' )    ; column(av)%cell_sheet => data(col)%longwave
-            CASE ( 'air_temp' )    ; column(av)%cell_sheet => data(col)%air_temp
-            CASE ( 'air_pres' )    ; column(av)%cell_sheet => data(col)%air_pres
-            CASE ( 'humidity' )    ; column(av)%cell_sheet => data(col)%humidity
-            CASE ( 'wind_speed' )  ; column(av)%cell_sheet => data(col)%wind
-            CASE ( 'rain' )        ; column(av)%cell_sheet => data(col)%rain
-            CASE ( 'evap' )        ; column(av)%cell_sheet => data(col)%evap
-            CASE ( 'par_sf' )      ; column(av)%cell_sheet => data(col)%I_0
+            CASE ( 'longwave' )    ; icolm(av)%cell_sheet => data(col)%longwave
+            CASE ( 'air_temp' )    ; icolm(av)%cell_sheet => data(col)%air_temp
+            CASE ( 'air_pres' )    ; icolm(av)%cell_sheet => data(col)%air_pres
+            CASE ( 'humidity' )    ; icolm(av)%cell_sheet => data(col)%humidity
+            CASE ( 'wind_speed' )  ; icolm(av)%cell_sheet => data(col)%wind
+            CASE ( 'rain' )        ; icolm(av)%cell_sheet => data(col)%rain
+            CASE ( 'evap' )        ; icolm(av)%cell_sheet => data(col)%evap
+            CASE ( 'par_sf' )      ; icolm(av)%cell_sheet => data(col)%I_0
 
-            CASE ( 'col_depth' )   ; column(av)%cell_sheet => data(col)%col_depth
-            CASE ( 'depth' )       ; column(av)%cell => data(col)%depth
-            CASE ( 'layer_area' )  ; column(av)%cell => data(col)%area
-            CASE ( 'layer_ht' )    ; column(av)%cell => data(col)%dz
+            CASE ( 'col_depth' )   ; icolm(av)%cell_sheet => data(col)%col_depth
+            CASE ( 'depth' )       ; icolm(av)%cell => data(col)%depth
+            CASE ( 'layer_area' )  ; icolm(av)%cell => data(col)%area
+            CASE ( 'layer_ht' )    ; icolm(av)%cell => data(col)%dz
 
-            CASE ( 'temperature' ) ; column(av)%cell => data(col)%temp
-            CASE ( 'salinity' )    ; column(av)%cell => data(col)%salt
-            CASE ( 'cell_vel' )    ; column(av)%cell => data(col)%cvel
-            CASE ( 'density' )     ; column(av)%cell => data(col)%rho
-            CASE ( 'pressure' )    ; column(av)%cell => data(col)%pres
+            CASE ( 'temperature' ) ; icolm(av)%cell => data(col)%temp
+            CASE ( 'salinity' )    ; icolm(av)%cell => data(col)%salt
+            CASE ( 'cell_vel' )    ; icolm(av)%cell => data(col)%cvel
+            CASE ( 'pressure' )    ; icolm(av)%cell => data(col)%pres
+            CASE ( 'density' )     ; icolm(av)%cell => data(col)%rho
+            CASE ( 'rad' )         ; icolm(av)%cell => data(col)%rad
 
-            CASE ( 'extc_coef' )   ; column(av)%cell => data(col)%extc
-            CASE ( 'par' )         ; column(av)%cell => data(col)%par
-            CASE ( 'nir' )         ; column(av)%cell => data(col)%nir
-            CASE ( 'uva' )         ; column(av)%cell => data(col)%uva
-            CASE ( 'uvb' )         ; column(av)%cell => data(col)%uvb
+            CASE ( 'extc_coef' )   ; icolm(av)%cell => data(col)%extc
+            CASE ( 'par' )         ; icolm(av)%cell => data(col)%par
+            CASE ( 'nir' )         ; icolm(av)%cell => data(col)%nir
+            CASE ( 'uva' )         ; icolm(av)%cell => data(col)%uva
+            CASE ( 'uvb' )         ; icolm(av)%cell => data(col)%uvb
 
-            CASE ( 'tss' )         ; column(av)%cell => data(col)%tss
-            CASE ( 'ss1' )         ; column(av)%cell => data(col)%tss   ! For FV API 2.0 (To be connected to sed_conc)
-            CASE ( 'ss2' )         ; column(av)%cell => data(col)%tss   ! For FV API 2.0 (To be connected to sed_conc)
-            CASE ( 'ss3' )         ; column(av)%cell => data(col)%tss   ! For FV API 2.0 (To be connected to sed_conc)
-            CASE ( 'ss4' )         ; column(av)%cell => data(col)%tss   ! For FV API 2.0 (To be connected to sed_conc)
+            CASE ( 'tss' )         ; icolm(av)%cell => data(col)%tss
+            CASE ( 'ss1' )         ; icolm(av)%cell => data(col)%ss1   ! For FV API 2.0 (To be connected to sed_conc)
+            CASE ( 'ss2' )         ; icolm(av)%cell => data(col)%ss2   ! For FV API 2.0 (To be connected to sed_conc)
+            CASE ( 'ss3' )         ; icolm(av)%cell => data(col)%ss3   ! For FV API 2.0 (To be connected to sed_conc)
+            CASE ( 'ss4' )         ; icolm(av)%cell => data(col)%ss4   ! For FV API 2.0 (To be connected to sed_conc)
 
-            CASE ( 'taub' )        ; column(av)%cell_sheet => data(col)%layer_stress ! CAB? col_taub
+            CASE ( 'taub' )        ; icolm(av)%cell_sheet => data(col)%layer_stress ! CAB? col_taub
 
-            CASE ( 'sed_zones' )   ; column(av)%cell => data(col)%sed_zones
-            CASE ( 'sed_zone' )    ; column(av)%cell_sheet => data(col)%sed_zone
+            CASE ( 'sed_zones' )   ; icolm(av)%cell => data(col)%sed_zones
+            CASE ( 'sed_zone' )    ; icolm(av)%cell_sheet => data(col)%sed_zone
+
      ! CAB: Not handled yet
      !      CASE ( 'material' )    ; IF ( do_zone_averaging ) THEN
-     !                                  column(av)%cell_sheet => zone(zm(col))
+     !                                  icolm(av)%cell_sheet => zone(zm(col))
      !                               ELSE
-     !                                  column(av)%cell_sheet => mat(col)
+     !                                  icolm(av)%cell_sheet => mat(col)
      !                               ENDIF
-!           CASE ( 'material' )    ; column(av)%cell_sheet => data(col)%mat_id
+            CASE ( 'material' )    ; icolm(av)%cell_sheet => data(col)%mat_id
 
-            CASE ( 'bathy' )       ; column(av)%cell_sheet => data(col)%bathy
-            CASE ( 'nearest_active' ) ; column(av)%cell_sheet => nearest_active(col)
-            CASE ( 'nearest_depth' )  ; column(av)%cell_sheet => nearest_depth(col)
+            CASE ( 'bathy' )       ; icolm(av)%cell_sheet => data(col)%bathy
+            CASE ( 'nearest_active' ) ; icolm(av)%cell_sheet => nearest_active(col)
+            CASE ( 'nearest_depth' )  ; icolm(av)%cell_sheet => nearest_depth(col)
 
-            CASE ( 'biodrag' )     ; column(av)%cell => data(col)%biodrag
-            CASE ( 'bioextc' )     ; column(av)%cell => data(col)%bioextc
-            CASE ( 'solarshade' )  ; column(av)%cell_sheet => data(col)%solarshade
-            CASE ( 'windshade' )   ; column(av)%cell_sheet => data(col)%windshade
-            CASE ( 'rainloss' )    ; column(av)%cell_sheet => data(col)%rainloss
+            CASE ( 'biodrag' )     ; icolm(av)%cell => data(col)%biodrag
+            CASE ( 'bioextc' )     ; icolm(av)%cell => data(col)%bioextc
+            CASE ( 'solarshade' )  ; icolm(av)%cell_sheet => data(col)%solarshade
+            CASE ( 'windshade' )   ; icolm(av)%cell_sheet => data(col)%windshade
+            CASE ( 'rainloss' )    ; icolm(av)%cell_sheet => data(col)%rainloss
 
-            CASE DEFAULT ; CALL STOPIT("ERROR: external variable "//trim(tvar%name)//" not found.")
+            CASE DEFAULT ; CALL STOPIT("ERROR: environment variable "//trim(tvar%name)//" not found.")
          END SELECT
       ELSEIF ( tvar%diag ) THEN  !# Diagnostic variable
          IF ( tvar%sheet ) THEN
             sd =    sd + 1
-            column(av)%cell_sheet => data(col)%cc_diag_hz(sd)
+            icolm(av)%cell_sheet => data(col)%cc_diag_hz(sd)
          ELSE
             d = d + 1
-            column(av)%cell => data(col)%cc_diag(d,:)
+            icolm(av)%cell => data(col)%cc_diag(d,:)
          ENDIF
       ELSE    !# state variable
          IF ( tvar%sheet ) THEN
             sv = sv + 1
-            column(av)%cell_sheet => data(col)%cc_hz(sv)
-            column(av)%flux_ben => flux_ben(n_vars+sv)
-            column(av)%flux_atm => flux_atm(n_vars+sv)
-            column(av)%flux_rip => flux_rip(n_vars+sv)
+            icolm(av)%cell_sheet => data(col)%cc_hz(sv)
+            icolm(av)%flux_ben => flux_ben(n_vars+sv)
+            icolm(av)%flux_atm => flux_atm(n_vars+sv)
+            icolm(av)%flux_rip => flux_rip(n_vars+sv)
          ELSE
             v = v + 1
-            column(av)%cell => data(col)%cc(v,:)
-            column(av)%flux_pel => flux_pel(v,:)
-            column(av)%flux_ben => flux_ben(v)
-            column(av)%flux_atm => flux_atm(v)
-            column(av)%flux_rip => flux_rip(v)
+            icolm(av)%cell => data(col)%cc(v,:)
+            icolm(av)%flux_pel => flux_pel(v,:)
+            icolm(av)%flux_ben => flux_ben(v)
+            icolm(av)%flux_atm => flux_atm(v)
+            icolm(av)%flux_rip => flux_rip(v)
          ENDIF
       ENDIF
    ENDDO
@@ -1232,10 +1271,117 @@ END SUBROUTINE define_column
 
 
 !###############################################################################
-SUBROUTINE check_states(column, col, wlev)
+SUBROUTINE define_zone_column(zcolm, zon)
+!-------------------------------------------------------------------------------
+! Set up the current column pointers
 !-------------------------------------------------------------------------------
 !ARGUMENTS
-   TYPE (aed_column_t),INTENT(inout) :: column(:)
+   TYPE(aed_column_t),INTENT(inout) :: zcolm(n_aed_vars)
+   INTEGER, INTENT(in)  :: zon
+!
+!LOCALS
+   INTEGER :: av
+   INTEGER :: v, d, sv, sd, ev
+   TYPE(aed_variable_t),POINTER :: tvar
+!
+!-------------------------------------------------------------------------------
+!BEGIN
+   v = 0 ; d = 0; sv = 0; sd = 0 ; ev = 0
+   DO av=1,n_aed_vars
+      IF ( .NOT.  aed_get_var(av, tvar) ) STOP "Error getting variable info"
+
+      IF ( tvar%extern ) THEN !# global variable
+         ev = ev + 1
+         SELECT CASE (tvar%name)
+            CASE ( 'timestep' )    ; zcolm(av)%cell_sheet => timestep
+            CASE ( 'yearday' )     ; zcolm(av)%cell_sheet => yearday
+            CASE ( 'longitude' )   ; zcolm(av)%cell_sheet => aedZones(zon)%longitude
+            CASE ( 'latitude' )    ; zcolm(av)%cell_sheet => aedZones(zon)%latitude
+            CASE ( 'col_num' )     ; zcolm(av)%cell_sheet => aedZones(zon)%z_env(1)%z_col_num
+
+            CASE ( 'longwave' )    ; zcolm(av)%cell_sheet => aedZones(zon)%z_env(1)%z_longwave
+            CASE ( 'air_temp' )    ; zcolm(av)%cell_sheet => aedZones(zon)%z_env(1)%z_air_temp
+            CASE ( 'air_pres' )    ; zcolm(av)%cell_sheet => aedZones(zon)%z_env(1)%z_air_pres
+            CASE ( 'humidity' )    ; zcolm(av)%cell_sheet => aedZones(zon)%z_env(1)%z_humidity
+            CASE ( 'wind_speed' )  ; zcolm(av)%cell_sheet => aedZones(zon)%z_env(1)%z_wind
+            CASE ( 'rain' )        ; zcolm(av)%cell_sheet => aedZones(zon)%z_env(1)%z_rain
+            CASE ( 'evap' )        ; zcolm(av)%cell_sheet => aedZones(zon)%z_env(1)%z_evap
+            CASE ( 'par_sf' )      ; zcolm(av)%cell_sheet => aedZones(zon)%z_env(1)%z_I_0
+
+            CASE ( 'col_depth' )   ; zcolm(av)%cell_sheet => aedZones(zon)%z_env(1)%z_col_depth
+            CASE ( 'depth' )       ; zcolm(av)%cell => aedZones(zon)%z_env(:)%z_depth
+            CASE ( 'layer_area' )  ; zcolm(av)%cell => aedZones(zon)%z_env(:)%z_area
+            CASE ( 'layer_ht' )    ; zcolm(av)%cell => aedZones(zon)%z_env(:)%z_dz
+
+            CASE ( 'temperature' ) ; zcolm(av)%cell => aedZones(zon)%z_env(:)%z_temp
+            CASE ( 'salinity' )    ; zcolm(av)%cell => aedZones(zon)%z_env(:)%z_salt
+            CASE ( 'cell_vel' )    ; zcolm(av)%cell => aedZones(zon)%z_env(:)%z_vel
+            CASE ( 'pressure' )    ; zcolm(av)%cell => aedZones(zon)%z_env(:)%z_pres
+            CASE ( 'density' )     ; zcolm(av)%cell => aedZones(zon)%z_env(:)%z_rho
+            CASE ( 'rad' )         ; zcolm(av)%cell => aedZones(zon)%z_env(:)%z_rad
+
+            CASE ( 'extc_coef' )   ; zcolm(av)%cell => aedZones(zon)%z_env(:)%z_extc
+            CASE ( 'par' )         ; zcolm(av)%cell => aedZones(zon)%z_env(:)%z_par
+            CASE ( 'nir' )         ; zcolm(av)%cell => aedZones(zon)%z_env(:)%z_nir
+            CASE ( 'uva' )         ; zcolm(av)%cell => aedZones(zon)%z_env(:)%z_uva
+            CASE ( 'uvb' )         ; zcolm(av)%cell => aedZones(zon)%z_env(:)%z_uvb
+
+            CASE ( 'tss' )         ; zcolm(av)%cell => aedZones(zon)%z_env(:)%z_tss
+            CASE ( 'ss1' )         ; zcolm(av)%cell => aedZones(zon)%z_env(:)%z_ss1
+            CASE ( 'ss2' )         ; zcolm(av)%cell => aedZones(zon)%z_env(:)%z_ss2
+            CASE ( 'ss3' )         ; zcolm(av)%cell => aedZones(zon)%z_env(:)%z_ss3
+            CASE ( 'ss4' )         ; zcolm(av)%cell => aedZones(zon)%z_env(:)%z_ss4
+
+            CASE ( 'taub' )        ; zcolm(av)%cell_sheet => aedZones(zon)%z_env(1)%z_layer_stress !CAB ??? (bot)
+
+            CASE ( 'sed_zones' )   ; zcolm(av)%cell => aedZones(zon)%z_env(:)%z_sed_zones; zone_var = av
+            CASE ( 'sed_zone' )    ; zcolm(av)%cell_sheet => aedZones(zon)%z_env(1)%z_sed_zone; zone_var = av
+            CASE ( 'material' )    ; zcolm(av)%cell_sheet => aedZones(zon)%z_env(1)%z_mat_id
+
+            CASE ( 'bathy' )       ; zcolm(av)%cell_sheet => aedZones(zon)%z_env(1)%z_bathy
+         !  CASE ( 'nearest_active' ) ; zcolm(av)%cell_sheet => nearest_active(col)
+         !  CASE ( 'nearest_depth' )  ; zcolm(av)%cell_sheet => nearest_depth(col)
+
+            CASE ( 'biodrag' )     ; zcolm(av)%cell => aedZones(zon)%z_env(:)%z_biodrag
+            CASE ( 'bioextc' )     ; zcolm(av)%cell => aedZones(zon)%z_env(:)%z_bioextc
+            CASE ( 'solarshade' )  ; zcolm(av)%cell_sheet => aedZones(zon)%z_env(1)%z_solarshade
+            CASE ( 'windshade' )   ; zcolm(av)%cell_sheet => aedZones(zon)%z_env(1)%z_windshade
+            CASE ( 'rainloss' )    ; zcolm(av)%cell_sheet => aedZones(zon)%z_env(1)%z_rainloss
+
+            CASE DEFAULT ; CALL STOPIT("ERROR: external variable "//trim(tvar%name)//" not found.")
+         END SELECT
+      ELSEIF ( tvar%diag ) THEN  !# Diagnostic variable
+         IF ( tvar%sheet ) THEN
+            sd = sd + 1
+            zcolm(av)%cell_sheet => aedZones(zon)%z_cc_diag_hz(sd)
+         ELSE
+            d = d + 1
+            zcolm(av)%cell => aedZones(zon)%z_cc_diag(d, :)
+         ENDIF
+      ELSE    !# state variable
+         IF ( tvar%sheet ) THEN
+            sv = sv + 1
+            zcolm(av)%cell_sheet => aedZones(zon)%z_cc_hz(sv)
+            zcolm(av)%flux_ben => flux_ben(n_vars+sv)
+            zcolm(av)%flux_atm => flux_atm(n_vars+sv)
+         ELSE
+            v = v + 1
+            zcolm(av)%cell => aedZones(zon)%z_cc(v, :)
+            zcolm(av)%flux_atm => flux_atm(v)
+            zcolm(av)%flux_pel => flux_pel(v, :)
+            zcolm(av)%flux_ben => flux_ben(v)
+         ENDIF
+      ENDIF
+   ENDDO
+END SUBROUTINE define_zone_column
+!+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+
+!###############################################################################
+SUBROUTINE check_states(icolm, col, wlev)
+!-------------------------------------------------------------------------------
+!ARGUMENTS
+   TYPE (aed_column_t),INTENT(inout) :: icolm(:)
    INTEGER,INTENT(in) :: col, wlev
 !
 !LOCALS
@@ -1251,7 +1397,7 @@ SUBROUTINE check_states(column, col, wlev)
    last_naned = -1
 #endif
    DO lev=1, wlev
-      CALL aed_equilibrate(column, lev)    !MH this should be in the main do_glm routine ????!!!
+      CALL aed_equilibrate(icolm, lev)    !MH this should be in the main do_glm routine ????!!!
       v = 0
       DO i=1,n_aed_vars
          IF ( aed_get_var(i, tv) ) THEN
@@ -1289,50 +1435,33 @@ END SUBROUTINE check_states
 
 
 !###############################################################################
-SUBROUTINE aed_run_model(nCols, wlev, doSurface)
+SUBROUTINE aed_run_model(nCols, nLevs, doSurface)
 !-------------------------------------------------------------------------------
-!                        wlev is the number of levels used;
+!                        nLevs is the number of levels used;
 !-------------------------------------------------------------------------------
 !ARGUMENTS
-   INTEGER,INTENT(in) :: nCols
-   INTEGER,INTENT(in) :: wlev
+   INTEGER,INTENT(in) :: nCols, nLevs
    LOGICAL,INTENT(in) :: doSurface
 !
 !LOCALS
    INTEGER :: col, top, bot
-
-   TYPE (aed_column_t),ALLOCATABLE,SAVE :: column(:)
-   TYPE (aed_column_t),ALLOCATABLE,SAVE :: column_sed(:)
-   AED_REAL,ALLOCATABLE,TARGET,SAVE :: flux_ben(:)
-   AED_REAL,ALLOCATABLE,TARGET,SAVE :: flux_atm(:)
-   AED_REAL,ALLOCATABLE,TARGET,SAVE :: flux_rip(:)
-   AED_REAL,ALLOCATABLE,TARGET,SAVE :: flux_pel(:,:)
-   AED_REAL,ALLOCATABLE,TARGET,SAVE :: flux_zon(:,:)
-   AED_REAL,DIMENSION(:,:),ALLOCATABLE,SAVE :: flux_pel_pre
-   AED_REAL,DIMENSION(:,:),ALLOCATABLE,SAVE :: flux_pel_z
 !
 !-------------------------------------------------------------------------------
 !BEGIN
-!# This worked for GLM because its zones were detirmined by the layers - this is not the case for
-!# most other systems so it needs a rethink [same calc used further down too)
-   IF (.NOT.ALLOCATED(flux_pel))   ALLOCATE(flux_pel(n_vars+n_vars_ben,MAX(wlev,aed_n_zones)))
 
-   IF (.NOT.ALLOCATED(flux_zon))   ALLOCATE(flux_zon(n_vars+n_vars_ben, aed_n_zones))
-   IF (.NOT.ALLOCATED(flux_ben))   ALLOCATE(flux_ben(n_vars+n_vars_ben))
-   IF (.NOT.ALLOCATED(flux_atm))   ALLOCATE(flux_atm(n_vars+n_vars_ben))
-   IF (.NOT.ALLOCATED(flux_rip))   ALLOCATE(flux_rip(n_vars+n_vars_ben))
-   IF (.NOT.ALLOCATED(column))     ALLOCATE(column(n_aed_vars))
-   IF (.NOT.ALLOCATED(column_sed)) ALLOCATE(column_sed(n_aed_vars))
-
-   IF (.NOT.ALLOCATED(flux_pel_pre)) ALLOCATE(flux_pel_pre(n_vars+n_vars_ben, MAX(wlev, aed_n_zones)))
-   IF (.NOT.ALLOCATED(flux_pel_z))   ALLOCATE(flux_pel_z(n_vars+n_vars_ben, MAX(wlev, aed_n_zones)))
-
+   !----------------------------------------------------------------------------
+   !# index and time-step updates
    IF ( bottom_one ) THEN
-      top = wlev ; bot = 1
+      top = nLevs ; bot = 1
    ELSE
-      top = 1 ; bot = wlev
+      top = 1 ; bot = nLevs
    ENDIF
 
+   !# reset effective time/step
+   dt_eff = timestep/FLOAT(split_factor)
+
+   !----------------------------------------------------------------------------
+   !# Resetting and re-initialisation tasks
    DO col=1, nCols
       data(col)%cc_diag = 0.
       data(col)%cc_diag_hz = 0.
@@ -1341,22 +1470,23 @@ SUBROUTINE aed_run_model(nCols, wlev, doSurface)
    IF ( .NOT. reinited ) THEN
       DO col=1, nCols
       !  IF (.NOT. active(col)) CYCLE  !# skip this column if dry
-         CALL define_column(column, col, top, flux_pel, flux_atm, flux_ben, flux_rip)
-         CALL re_initialize(column)
+         CALL re_initialize(all_cols(:,col), nLevs)
       ENDDO
       reinited = .TRUE.
    ENDIF
 
+   !----------------------------------------------------------------------------
+   !# Pre flux integration tasks
    DO col=1, nCols
    !  IF (.NOT. active(col)) CYCLE  !# skip this column if dry
-      CALL define_column(column, col, top, flux_pel, flux_atm, flux_ben, flux_rip)
-      CALL pre_kinetics(col)
+      CALL pre_kinetics(all_cols(:,col), col, nLevs)
    ENDDO
 
+   !----------------------------------------------------------------------------
+   !# Main time-step tasks
    DO col=1, nCols
    !  IF (.NOT. active(col)) CYCLE  !# skip this column if dry
-      CALL define_column(column, col, top, flux_pel, flux_atm, flux_ben, flux_rip)
-      CALL aed_run_column(wlev, doSurface)
+      CALL aed_run_column(all_cols(:,col), col, nLevs, doSurface)
    ENDDO
 
 !-------------------------------------------------------------------------------
@@ -1364,10 +1494,11 @@ CONTAINS
 
 
    !############################################################################
-   SUBROUTINE aed_run_column(wlev, doSurface)
+   SUBROUTINE aed_run_column(icolm, col, nlev, doSurface)
    !----------------------------------------------------------------------------
    !ARGUMENTS
-      INTEGER,INTENT(in) :: wlev
+      TYPE(aed_column_t),INTENT(inout) :: icolm(:)
+      INTEGER,INTENT(in) :: col, nlev
       LOGICAL,INTENT(in) :: doSurface
    !
    !LOCALS
@@ -1377,17 +1508,30 @@ CONTAINS
    !BEGIN
       DO split=1,split_factor
          IF (benthic_mode .GT. 1) THEN
-            CALL p_calc_zone_areas(aedZones, aed_n_zones, data(col)%area, data(col)%lheights, wlev)
+            CALL p_calc_zone_areas(aedZones, aed_n_zones, data(col)%area, data(col)%lheights, nlev)
             CALL p_copy_to_zone(aedZones, aed_n_zones, data(col)%lheights, data(col)%cc,  &
-                                 data(col)%cc_hz, data(col)%cc_diag, data(col)%cc_diag_hz, wlev)
+                                 data(col)%cc_hz, data(col)%cc_diag, data(col)%cc_diag_hz, nlev)
          ENDIF
 
+!---------
+      !# Update local light field (self-shading may have changed through
+      !# changes in biological state variables). Update_light is set to
+      !# be inline with current aed_phyoplankton, which requires only
+      !# surface par, then integrates over depth of a layer
+      CALL update_light(icolm, col, nlev)
+
+      !# Fudge
+      data(col)%nir(:) = (data(col)%par(:)/par_fraction) * nir_fraction
+      data(col)%uva(:) = (data(col)%par(:)/par_fraction) * uva_fraction
+      data(col)%uvb(:) = (data(col)%par(:)/par_fraction) * uvb_fraction
+!---------
+
          !# Time-integrate one biological time step
-         CALL calculate_fluxes(column, wlev)
+         CALL calculate_fluxes(icolm, col, nlev, doSurface)
 
          !# Update the water column layers
          DO v = 1, n_vars
-            DO lev = 1, wlev
+            DO lev = 1, nlev
                data(col)%cc(v, lev) = data(col)%cc(v, lev) + dt_eff*flux_pel(v, lev)
             ENDDO
          ENDDO
@@ -1405,24 +1549,25 @@ CONTAINS
 
             !# Distribute cc-sed benthic properties back into main cc array
             CALL p_copy_from_zone(aedZones, aed_n_zones, data(col)%lheights, data(col)%cc,  &
-                                 data(col)%cc_hz, data(col)%cc_diag, data(col)%cc_diag_hz, wlev)
+                                 data(col)%cc_hz, data(col)%cc_diag, data(col)%cc_diag_hz, nlev)
          ELSE
             DO v = n_vars+1, n_vars+n_vars_ben
                data(col)%cc(v, bot) = data(col)%cc(v, bot) + dt_eff*flux_ben(v)
             ENDDO
          ENDIF
 
-         CALL check_states(column, col, wlev)
+         CALL check_states(icolm, col, nlev)
       ENDDO
    END SUBROUTINE aed_run_column
    !++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 
 
    !############################################################################
-   SUBROUTINE pre_kinetics(col)
+   SUBROUTINE pre_kinetics(icolm, col, nlev)
    !----------------------------------------------------------------------------
    !ARGUMENTS
-      INTEGER,INTENT(in) :: col
+      TYPE(aed_column_t),INTENT(inout) :: icolm(:)
+      INTEGER,INTENT(in) :: col, nlev
    !
    !LOCALS
       TYPE(aed_variable_t),POINTER :: tv
@@ -1449,10 +1594,10 @@ CONTAINS
                ENDIF
             ENDIF
          ENDDO
-         DO lev = 1, wlev
+         DO lev = 1, nlev
             ! update ws for modules that use the mobility method
             !# direction doesn't seem to matter ? CAB
-            CALL aed_mobility(column, lev, ws(:,lev))
+            CALL aed_mobility(icolm, lev, ws(:,lev))
          ENDDO
 
          !# Calculate source/sink terms due to the settling or rising of
@@ -1467,7 +1612,7 @@ CONTAINS
                      !# only for state_vars that are not sheet, and also non-zero ws
                      IF ( .NOT. isnan(tv%mobility) .AND. SUM(ABS(ws(i,:)))>zero_ ) THEN
                         min_C = tv%minimum
-                        CALL doMobility(wlev, timestep, data(col)%dz, data(col)%area, ws(i,:), min_C, data(col)%cc(v, :))
+                        CALL doMobility(nlev, timestep, data(col)%dz, data(col)%area, ws(i,:), min_C, data(col)%cc(v, :))
                      ENDIF
                   ENDIF
                ENDIF
@@ -1475,14 +1620,14 @@ CONTAINS
          ENDIF
       ENDIF
 
-      CALL check_states(column, col, wlev)
+      CALL check_states(icolm, col, nlev)
 
 #if CUR_VARIANT == GLM_VARIANT
 !CAB ??
       IF (benthic_mode .GT. 1) THEN
-         CALL p_calc_zone_areas(aedZones, aed_n_zones, data(col)%area, data(col)%lheights, wlev)
+         CALL p_calc_zone_areas(aedZones, aed_n_zones, data(col)%area, data(col)%lheights, nlev)
          CALL p_copy_to_zone(aedZones, aed_n_zones, data(col)%lheights, data(col)%cc,  &
-                                 data(col)%cc_hz, data(col)%cc_diag, data(col)%cc_diag_hz, wlev)
+                                 data(col)%cc_hz, data(col)%cc_diag, data(col)%cc_diag_hz, nlev)
       ENDIF
 #endif
 
@@ -1492,13 +1637,7 @@ CONTAINS
       !# surface par, then integrates over depth of a layer
 
       !# populate local light/extc arrays one column at a time
-      IF (.NOT. link_ext_par) THEN
-         IF ( bottom_one ) THEN
-            CALL update_light(column, col, top)
-         ELSE
-            CALL update_light(column, col, bot-top+1)
-         ENDIF
-      ENDIF
+      IF (.NOT. link_ext_par) CALL update_light(icolm, col, nlev)
 
       ! non PAR bandwidth fractions (set assuming single light extinction)
       data(col)%nir = (data(col)%par/par_fraction) * nir_fraction
@@ -1509,118 +1648,21 @@ CONTAINS
 
 
    !############################################################################
-   SUBROUTINE define_zone_column(column, zon, top, bot)
-   !----------------------------------------------------------------------------
-   ! Set up the current column pointers
+   SUBROUTINE re_initialize(icolm, nlev)
    !----------------------------------------------------------------------------
    !ARGUMENTS
-      TYPE(aed_column_t),INTENT(inout) :: column(n_aed_vars)
-      INTEGER, INTENT(in)  :: zon, top, bot
-   !
-   !LOCALS
-      INTEGER :: av
-      INTEGER :: v, d, sv, sd, ev
-      TYPE(aed_variable_t),POINTER :: tvar
-   !
-   !----------------------------------------------------------------------------
-   !BEGIN
-   v = 0 ; d = 0; sv = 0; sd = 0 ; ev = 0
-   DO av=1,n_aed_vars
-      IF ( .NOT.  aed_get_var(av, tvar) ) STOP "Error getting variable info"
-
-      IF ( tvar%extern ) THEN !# global variable
-         ev = ev + 1
-         SELECT CASE ( TRIM(tvar%name) )
-            CASE ( 'timestep' )    ; column(av)%cell_sheet => timestep
-            CASE ( 'yearday' )     ; column(av)%cell_sheet => yearday
-            CASE ( 'longitude' )   ; column(av)%cell_sheet => aedZones(zon)%longitude
-            CASE ( 'latitude' )    ; column(av)%cell_sheet => aedZones(zon)%latitude
-
-            CASE ( 'air_temp' )    ; column(av)%cell_sheet => aedZones(zon)%z_env(1)%z_air_temp
-            CASE ( 'air_pres' )    ; column(av)%cell_sheet => aedZones(zon)%z_env(1)%z_air_pres
-            CASE ( 'humidity' )    ; column(av)%cell_sheet => aedZones(zon)%z_env(1)%z_humidity
-            CASE ( 'wind_speed' )  ; column(av)%cell_sheet => aedZones(zon)%z_env(1)%z_wind
-            CASE ( 'rain' )        ; column(av)%cell_sheet => aedZones(zon)%z_env(1)%z_rain
-            CASE ( 'evap' )        ; column(av)%cell_sheet => aedZones(zon)%z_env(1)%z_evap
-            CASE ( 'par_sf' )      ; column(av)%cell_sheet => aedZones(zon)%z_env(1)%z_I_0
-
-            CASE ( 'col_depth' )   ; column(av)%cell_sheet => aedZones(zon)%z_env(1)%z_col_depth
-            CASE ( 'depth' )       ; column(av)%cell => aedZones(zon)%z_env(:)%z_depth
-            CASE ( 'layer_area' )  ; column(av)%cell => aedZones(zon)%z_env(:)%z_area
-            CASE ( 'layer_ht' )    ; column(av)%cell => aedZones(zon)%z_env(:)%z_dz
-
-            CASE ( 'temperature' ) ; column(av)%cell => aedZones(zon)%z_env(:)%z_temp
-            CASE ( 'salinity' )    ; column(av)%cell => aedZones(zon)%z_env(:)%z_salt
-            CASE ( 'cell_vel' )    ; column(av)%cell => aedZones(zon)%z_env(:)%z_vel
-            CASE ( 'pressure' )    ; column(av)%cell => aedZones(zon)%z_env(:)%z_pres
-            CASE ( 'density' )     ; column(av)%cell => aedZones(zon)%z_env(:)%z_rho
-
-            CASE ( 'extc_coef' )   ; column(av)%cell => aedZones(zon)%z_env(:)%z_extc
-            CASE ( 'par' )         ; column(av)%cell => aedZones(zon)%z_env(:)%z_par
-            CASE ( 'nir' )         ; column(av)%cell => aedZones(zon)%z_env(:)%z_nir
-            CASE ( 'uva' )         ; column(av)%cell => aedZones(zon)%z_env(:)%z_uva
-            CASE ( 'uvb' )         ; column(av)%cell => aedZones(zon)%z_env(:)%z_uvb
-
-            CASE ( 'tss' )         ; column(av)%cell => aedZones(zon)%z_env(:)%z_tss
-
-            CASE ( 'taub' )        ; column(av)%cell_sheet => aedZones(zon)%z_env(1)%z_layer_stress !CAB ??? (bot)
-
-            CASE ( 'sed_zones' )   ; column(av)%cell => aedZones(zon)%z_env(:)%z_sed_zones; zone_var = av
-        !   CASE ( 'sed_zone' )    ; column(av)%cell_sheet => aedZones(zon)%z_env(bot)%z_sed_zones; zone_var = av !CAB ??? (bot)
-            CASE ( 'sed_zone' )    ; column(av)%cell_sheet => aedZones(zon)%z_env(1)%z_sed_zone; zone_var = av
-
-            CASE DEFAULT ; CALL STOPIT("ERROR: external variable "//trim(tvar%name)//" not found.")
-         END SELECT
-      ELSEIF ( tvar%diag ) THEN  !# Diagnostic variable
-         IF ( tvar%sheet ) THEN
-            sd = sd + 1
-            column(av)%cell_sheet => aedZones(zon)%z_cc_diag_hz(sd)
-         ELSE
-            d = d + 1
-            column(av)%cell => aedZones(zon)%z_cc_diag(d, :)
-         ENDIF
-      ELSE    !# state variable
-         IF ( tvar%sheet ) THEN
-            sv = sv + 1
-!CAB ??
-#if 1
-            IF ( tvar%bot ) THEN
-               column(av)%cell_sheet => aedZones(zon)%z_cc(n_vars+sv, bot)
-            ELSEIF ( tvar%top ) THEN
-               column(av)%cell_sheet => aedZones(zon)%z_cc(n_vars+sv, top)
-            ENDIF
-#else
-            column(av)%cell_sheet => aedZones(zon)%z_cc_hz(sv)
-#endif
-            column(av)%flux_ben => flux_ben(n_vars+sv)
-            column(av)%flux_atm => flux_atm(n_vars+sv)
-         ELSE
-            v = v + 1
-            column(av)%cell => aedZones(zon)%z_cc(v, :)
-            column(av)%flux_atm => flux_atm(v)
-            column(av)%flux_pel => flux_pel(v, :)
-            column(av)%flux_ben => flux_ben(v)
-         ENDIF
-      ENDIF
-   ENDDO
-   END SUBROUTINE define_zone_column
-   !++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
-
-
-   !############################################################################
-   SUBROUTINE re_initialize(column)
-   !----------------------------------------------------------------------------
-   !ARGUMENTS
-      TYPE(aed_column_t),INTENT(inout) :: column(:)
+      TYPE(aed_column_t),INTENT(inout) :: icolm(:)
+      INTEGER,INTENT(in) :: nlev
    !
    !LOCALS
       INTEGER :: lev,zon,av,sv,sd
       TYPE(aed_variable_t),POINTER :: tvar
+      TYPE(aed_column_t),DIMENSION(:),POINTER :: column_sed    !# (n_aed_vars)
    !
    !----------------------------------------------------------------------------
    !BEGIN
-      DO lev=1, wlev
-         CALL aed_initialize(column, lev)
+      DO lev=1, nlev
+         CALL aed_initialize(icolm, lev)
       ENDDO
 
 #if CUR_VARIANT == GLM_VARIANT
@@ -1630,12 +1672,12 @@ CONTAINS
          !# water conditions need to be aggregated from multiple cells/layers
 
          DO zon=1,aed_n_zones
-            CALL define_zone_column(column_sed, zon, aed_n_zones, 1)
+            column_sed => zon_cols(:,zon)
 
-            aedZones(zon)%z_env(1)%z_sed_zones = zon  !MH TMP !CAB ???
+        !   aedZones(zon)%z_env%z_sed_zones = zon  !MH TMP !CAB ???
 !           print *,'aedZones(zon)%z_sed_zones',aedZones(zon)%z_sed_zones !MH TMP
             !# If multiple benthic zones, we must update the benthic variable pointer for the new zone
-            IF (zone_var .GT. 0) column_sed(zone_var)%cell_sheet => aedZones(zon)%z_env(1)%z_sed_zones !CAB ???
+!           IF (zone_var .GT. 0) column_sed(zone_var)%cell_sheet => aedZones(zon)%z_env(1)%z_sed_zones !CAB ???
 
             sv = 0 ; sd = 0
 
@@ -1661,7 +1703,7 @@ CONTAINS
 #else
 !# assumes only GLM does the odd zoning stuff
       IF ( .NOT. do_zone_averaging ) THEN
-         CALL aed_initialize_benthic(column, 1)
+         CALL aed_initialize_benthic(icolm, 1)
   ! CAB: Not yet
   !   ELSE
   !      CALL aed_initialize_zone_benthic(nCols, active, n_aed_vars, data(col)%cc_diag, benth_map)
@@ -1672,14 +1714,14 @@ CONTAINS
 
 
    !############################################################################
-   SUBROUTINE glm_benthics(column, wlev)
+   SUBROUTINE glm_benthics(icolm, col, wlev, bot)
    !----------------------------------------------------------------------------
    ! Calculate the benthic fluxes for GLM. This has been seperated from the
    ! general calc because its more complicated.
    !----------------------------------------------------------------------------
    !ARGUMENTS
-      TYPE(aed_column_t),INTENT(inout) :: column(:)
-      INTEGER, INTENT(in) :: wlev
+      TYPE(aed_column_t),INTENT(inout) :: icolm(:)
+      INTEGER, INTENT(in) :: col, wlev, bot
    !
    !LOCALS
       INTEGER :: lev,zon,v,v_start,v_end,av,sv,sd
@@ -1687,6 +1729,8 @@ CONTAINS
       AED_REAL :: localrainl, localshade, localdrag
       LOGICAL :: splitZone
       TYPE(aed_variable_t),POINTER :: tvar
+      TYPE(aed_column_t),DIMENSION(:),POINTER :: column_sed    !# (n_aed_vars)
+      INTEGER :: layer_map(wlev), zlev
    !
    !----------------------------------------------------------------------------
    !BEGIN
@@ -1697,17 +1741,16 @@ CONTAINS
 
 !$OMP DO
          DO zon=1,aed_n_zones
-            CALL define_zone_column(column_sed, zon, aed_n_zones, 1)
+            column_sed => zon_cols(:,zon)
 
             !# Reinitialise flux_ben to be repopulated for this zone
             flux_ben = zero_
             flux_pel_pre = zero_
 
             !# If multiple benthic zones, we must update the benthic variable pointer for the new zone
-            IF (zone_var .GT. 0) column_sed(zone_var)%cell_sheet => aedZones(zon)%z_env(1)%z_sed_zones ! CAB???
+          ! IF (zone_var .GT. 0) column_sed(zone_var)%cell_sheet => aedZones(zon)%z_env(1)%z_sed_zones ! CAB???
 
             sv = 0 ; sd = 0
-
             DO av=1,n_aed_vars
                IF ( .NOT. aed_get_var(av, tvar) ) STOP "Error getting variable info"
 
@@ -1727,22 +1770,42 @@ CONTAINS
             ENDDO
             !print*,"Calling ben for zone ",zone_var,zon,z_sed_zones(zon)
 
+            !# (1) ZONE COLUMN UPDATING
+            zlev = 0
+            DO lev=1,wlev
+               IF (aedZones(zon)%z_env(1)%z_height < data(col)%lheights(lev)) THEN
+                  zlev = lev
+                  EXIT
+               ENDIF
+            ENDDO
+            ! The upper height of the last zone may have no water above it.
+            ! In this case, set the wet-layer vector to just be the top water layer
+            IF(zlev == 0) zlev = wlev
+
+            DO lev=zlev,wlev
+              layer_map(lev) = zlev + wlev-lev
+            ENDDO
+            CALL aed_calculate_column(column_sed, layer_map)
+       !# This is unused. Only macrophyte has a routine for this, but it's link is commented out
+
             IF ( benthic_mode .EQ. 3 ) THEN
                !# Zone is able to operated on by riparian and dry methods
                CALL aed_calculate_riparian(column_sed, zon, aedZones(zon)%z_env(1)%z_pc_wet) ! CAB???
-               IF (aedZones(zon)%z_env(1)%z_pc_wet .EQ. 0. ) CALL aed_calculate_dry(column_sed, zon) !CAB ???
+               IF (aedZones(zon)%z_env(1)%z_pc_wet .EQ. 0. ) CALL aed_calculate_dry(column_sed, zlev) !CAB ???
 
                !# update feedback arrays to host model, to reduce rain (or if -ve then add flow)
-               CALL aed_rain_loss(column, 1, localrainl);
+               CALL aed_rain_loss(icolm, 1, localrainl);
                IF (link_rain_loss) rain_factor = localrainl
 
                !# update feedback arrays to shade the water (ie reduce incoming light, Io)
-               CALL aed_light_shading(column, 1, localshade)
+               CALL aed_light_shading(icolm, 1, localshade)
                IF (link_solar_shade) sw_factor = localshade
 
                !# now the bgc updates are complete, update links to host model
-               CALL aed_bio_drag(column, 1, localdrag)
+               IF (aedZones(zon)%z_env(1)%z_pc_wet > 0.99 ) THEN
+                  CALL aed_bio_drag(icolm, 1, localdrag)
                IF (link_bottom_drag) friction = localdrag
+            ENDIF
             ENDIF
 
             !# Calculate temporal derivatives due to benthic processes.
@@ -1750,7 +1813,7 @@ CONTAINS
             flux_pel_pre = flux_pel
 
 !           print*,"Calling ben for zone ",zone_var,zon,z_sed_zones(zon)
-            CALL aed_calculate_benthic_zone(column_sed, 1, zon)  !CAB???
+            CALL aed_calculate_benthic(column_sed, bot, .TRUE.)
 
             !# Record benthic fluxes in the zone array
             flux_zon(:, zon) = flux_ben(:)
@@ -1767,7 +1830,6 @@ CONTAINS
          DO lev=wlev,1,-1
             IF ( zon .GT. 1 ) THEN
                IF (lev .GT. 1) THEN
-                ! splitZone = lheights(lev-1) < aedZones(zon-1)%z_env(lev-1)%z_height !CAB ???
                   splitZone = data(col)%lheights(lev-1) < aedZones(zon-1)%z_env(1)%z_height !CAB ???
                ELSE
                   splitZone = 0.0 < aedZones(zon-1)%z_env(1)%z_height ! CAB???
@@ -1778,7 +1840,6 @@ CONTAINS
 
             IF (splitZone) THEN
                IF (lev .GT. 1) THEN
-            !     scale = (aedZones(zon-1)%z_env(lev-1)%z_height - lheights(lev-1)) / (lheights(lev) - lheights(lev-1)) ! CAB ???
                   scale = (aedZones(zon-1)%z_env(1)%z_height - data(col)%lheights(lev-1)) / &
                                               (data(col)%lheights(lev) - data(col)%lheights(lev-1)) ! CAB ???
                ELSE
@@ -1799,9 +1860,9 @@ CONTAINS
          !# bottom flux into pelagic over bottom box (i.e., divide by layer height).
          !# scaled to proportion of layer area that is "bottom"
          DO lev=1,wlev
-            if(lev>1)flux_pel(:, lev) = flux_pel(:, lev) * (data(col)%area(lev)-data(col)%area(lev-1))/data(col)%area(lev)
+            IF (lev > 1) flux_pel(:, lev) = flux_pel(:, lev) * (data(col)%area(lev)-data(col)%area(lev-1))/data(col)%area(lev)
             DO v=v_start,v_end
-              IF ( data(col)%cc(1, v) .GE. 0.0 ) flux_pel(lev, v) = &
+              IF ( data(col)%cc(1, v) .GE. 0.0 ) flux_pel(v, lev) = &
                              max(-1.0 * data(col)%cc(v, lev), flux_pel(v, lev)/data(col)%dz(lev))
             END DO
          ENDDO
@@ -1812,8 +1873,8 @@ CONTAINS
          !# model configurations where mass balance of benthic variables is required.
 
          !# Calculate temporal derivatives due to exchanges at the sediment/water interface
-         IF ( zone_var .GE. 1 ) column(zone_var)%cell_sheet => aedZones(1)%z_env(1)%z_sed_zones ! CAB ???
-         CALL aed_calculate_benthic(column, bot)
+        !IF ( zone_var .GE. 1 ) icolm(zone_var)%cell_sheet => aedZones(1)%z_env(1)%z_sed_zones ! CAB ???
+         CALL aed_calculate_benthic(icolm, bot)
 
          !# Limit flux out of bottom layers to concentration of that layer
          !# i.e. don't flux out more than is there is. Then
@@ -1829,7 +1890,7 @@ CONTAINS
 !$OMP DO
             DO lev=2,wlev
                !# Calculate temporal derivatives due to benthic fluxes.
-               CALL aed_calculate_benthic(column, lev)
+               CALL aed_calculate_benthic(icolm, lev)
 
                !# Limit flux out of bottom layers to concentration of that layer
                !# i.e. don't flux out more than is there
@@ -1849,18 +1910,20 @@ CONTAINS
 
 
    !############################################################################
-   SUBROUTINE calculate_fluxes(column, wlev)
+   SUBROUTINE calculate_fluxes(icolm, col, nlev, doSurface)
    !----------------------------------------------------------------------------
    ! Checks the current values of all state variables and repairs these
    !----------------------------------------------------------------------------
    !ARGUMENTS
-      TYPE(aed_column_t),INTENT(inout) :: column(:)
-      INTEGER,INTENT(in) :: wlev
+      TYPE(aed_column_t),INTENT(inout) :: icolm(:)
+      INTEGER,INTENT(in) :: col, nlev
+      LOGICAL,INTENT(in) :: doSurface
    !
    !LOCALS
-      INTEGER :: lev
-      INTEGER :: layer_map(wlev)
-      LOGICAL :: glm_version = .FALSE.
+      INTEGER :: lev !, top, bot
+      INTEGER :: layer_map(nlev)
+    ! LOGICAL :: glm_version = .FALSE.
+      LOGICAL :: glm_version = .TRUE.
    !
    !----------------------------------------------------------------------------
    !BEGIN
@@ -1875,31 +1938,22 @@ CONTAINS
       !# Start with updating column diagnostics (currently only used for light)
 
       !# WATER COLUMN UPDATING
-      DO lev=1,wlev
-         IF (bottom_one) THEN   !# not TFV_VARIANT
-            layer_map(lev) = 1 + wlev-lev
-         ELSE
-            layer_map(lev) = lev
-         ENDIF
-      ENDDO
-      CALL aed_calculate_column(column, layer_map)
-
       !# Now do the general calculation all flux terms for rhs in mass/m3/s
       !# Includes (i) benthic flux, (ii) surface exchange and (ii) kinetic updates in each cell
       !# as calculated by glm
 
       !# BENTHIC FLUXES
       IF ( glm_version ) THEN
-         CALL glm_benthics(column, wlev)
+         CALL glm_benthics(icolm, col, nlev, bot)
       ELSE
 ! CAB : not yet
 !        IF ( do_zone_averaging ) THEN
-!           flux_pel(:,wlev) = flux_pel(:,wlev) + flux_pel_z(bot, z) !/h(wlev)
+!           flux_pel(:,nlev) = flux_pel(:,nlev) + flux_pel_z(z, bot) !/h(nlev)
 !
 !           !# Calculate temporal derivatives due to benthic exchange processes.
-!           CALL aed_calculate_benthic(column, bot, .FALSE.)
+!           CALL aed_calculate_benthic(icolm, bot, .FALSE.)
 !        ELSE
-            CALL aed_calculate_benthic(column, bot)
+            CALL aed_calculate_benthic(icolm, bot)
 !        ENDIF
 
          !# Distribute bottom flux into pelagic over bottom box (i.e., divide by layer height).
@@ -1909,7 +1963,7 @@ CONTAINS
       !# SURFACE FLUXES
       !# Calculate temporal derivatives due to air-water exchange.
       IF (doSurface) THEN !# no surface exchange under ice cover
-         CALL aed_calculate_surface(column, top)
+         CALL aed_calculate_surface(icolm, top)
 
          !# Distribute the fluxes into pelagic surface layer
          flux_pel(:, top) = flux_pel(:, top) + flux_atm(:)/data(col)%dz(top)
@@ -1917,25 +1971,24 @@ CONTAINS
 
       !# WATER CELL KINETICS
       !# Add pelagic sink and source terms in cells of all depth levels.
-      DO lev=1,wlev
-         CALL aed_calculate(column, lev)
+      DO lev=1,nlev
+         CALL aed_calculate(icolm, lev)
       ENDDO
    END SUBROUTINE calculate_fluxes
    !++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
-
 
 END SUBROUTINE aed_run_model
 !+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 
 
 !###############################################################################
-SUBROUTINE update_light(column, col, nlev)
+SUBROUTINE update_light(icolm, col, nlev)
 !-------------------------------------------------------------------------------
 ! Calculate photosynthetically active radiation over entire column based
 ! on surface radiation, attenuated based on background & biotic extinction
 !-------------------------------------------------------------------------------
 !ARGUMENTS
-   TYPE (aed_column_t),INTENT(inout) :: column(:)
+   TYPE (aed_column_t),INTENT(inout) :: icolm(:)
    INTEGER,INTENT(in) :: col, nlev
 !
 !LOCALS
@@ -1953,7 +2006,7 @@ SUBROUTINE update_light(column, col, nlev)
    ENDIF
 
    ! Surface Kd
-   CALL aed_light_extinction(column, first, localext)
+   CALL aed_light_extinction(icolm, first, localext)
 
    ! Surface PAR
    data(col)%par(first) = par_fraction * data(col)%rad(first) * EXP( -(Kw+localext)*1e-6*data(col)%dz(first) )
@@ -1961,7 +2014,7 @@ SUBROUTINE update_light(column, col, nlev)
    ! Now set the top of subsequent layers, down to the bottom
    DO i = start,end,step
       localext_up = localext
-      CALL aed_light_extinction(column, i, localext)
+      CALL aed_light_extinction(icolm, i, localext)
 
       data(col)%par(i) = data(col)%par(i+1) * EXP( -(Kw + localext_up) * data(col)%dz(i+1) )
 

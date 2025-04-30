@@ -59,7 +59,8 @@ MODULE aed_zones
       AED_REAL :: z_col_depth
 
       AED_REAL :: z_pc_wet
-      AED_REAL :: z_colnums
+      AED_REAL :: z_col_num
+      AED_REAL :: z_mat_id
 
       AED_REAL :: z_temp
       AED_REAL :: z_salt
@@ -84,15 +85,20 @@ MODULE aed_zones
       AED_REAL :: z_air_pres
       AED_REAL :: z_rain
       AED_REAL :: z_evap
-      AED_REAL :: z_rainloss
       AED_REAL :: z_humidity
-      AED_REAL :: z_bathy
       AED_REAL :: z_I_0
       AED_REAL :: z_longwave
       AED_REAL :: z_nir
       AED_REAL :: z_par
       AED_REAL :: z_uva
       AED_REAL :: z_uvb
+
+      AED_REAL :: z_bathy
+      AED_REAL :: z_biodrag
+      AED_REAL :: z_bioextc
+      AED_REAL :: z_solarshade
+      AED_REAL :: z_windshade
+      AED_REAL :: z_rainloss
    END TYPE api_zone_env_t
    !#===========================================================#!
 
@@ -190,6 +196,9 @@ SUBROUTINE aed_init_zones(n_zones, n_levs, z_cc, z_cc_hz, z_diag, z_diag_hz)
    DO zon=1,n_zones
       aedZones(zon)%n_levs = n_levs
       ALLOCATE(aedZones(zon)%z_env(n_levs))
+
+      aedZones(zon)%z_env%z_sed_zone = zon
+      aedZones(zon)%z_env%z_sed_zones = zon
 
       aedZones(zon)%z_cc => z_cc(:, :, zon)
       aedZones(zon)%z_cc_hz => z_cc_hz(:, zon)
