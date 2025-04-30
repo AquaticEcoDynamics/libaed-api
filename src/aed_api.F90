@@ -1448,7 +1448,6 @@ SUBROUTINE aed_run_model(nCols, nLevs, doSurface)
 !
 !-------------------------------------------------------------------------------
 !BEGIN
-
    !----------------------------------------------------------------------------
    !# index and time-step updates
    IF ( bottom_one ) THEN
