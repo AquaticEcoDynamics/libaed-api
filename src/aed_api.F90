@@ -936,10 +936,6 @@ SUBROUTINE aed_set_model_env(env, ncols)
       data(col)%ss2 => env(col)%ss2
       data(col)%ss3 => env(col)%ss3
       data(col)%ss4 => env(col)%ss4
-!      IF (ASSOCIATED(env(col)%ss1)) data(col)%ss1 => env(col)%ss1
-!      IF (ASSOCIATED(env(col)%ss2)) data(col)%ss2 => env(col)%ss2
-!      IF (ASSOCIATED(env(col)%ss3)) data(col)%ss3 => env(col)%ss3
-!      IF (ASSOCIATED(env(col)%ss4)) data(col)%ss4 => env(col)%ss4
 
       data(col)%ustar_bed    => env(col)%ustar_bed
       data(col)%wv_uorb      => env(col)%wv_uorb
@@ -1339,8 +1335,8 @@ SUBROUTINE define_zone_column(zcolm, zon)
             CASE ( 'material' )    ; zcolm(av)%cell_sheet => aedZones(zon)%z_env(1)%z_mat_id
 
             CASE ( 'bathy' )       ; zcolm(av)%cell_sheet => aedZones(zon)%z_env(1)%z_bathy
-         !  CASE ( 'nearest_active' ) ; zcolm(av)%cell_sheet => nearest_active(col)
-         !  CASE ( 'nearest_depth' )  ; zcolm(av)%cell_sheet => nearest_depth(col)
+        !   CASE ( 'nearest_active' ) ; zcolm(av)%cell_sheet => nearest_active(zon)
+        !   CASE ( 'nearest_depth' )  ; zcolm(av)%cell_sheet => nearest_depth(zon)
 
             CASE ( 'biodrag' )     ; zcolm(av)%cell => aedZones(zon)%z_env(:)%z_biodrag
             CASE ( 'bioextc' )     ; zcolm(av)%cell => aedZones(zon)%z_env(:)%z_bioextc
@@ -1512,18 +1508,16 @@ CONTAINS
                                  data(col)%cc_hz, data(col)%cc_diag, data(col)%cc_diag_hz, nlev)
          ENDIF
 
-!---------
-      !# Update local light field (self-shading may have changed through
-      !# changes in biological state variables). Update_light is set to
-      !# be inline with current aed_phyoplankton, which requires only
-      !# surface par, then integrates over depth of a layer
-      CALL update_light(icolm, col, nlev)
+         !# Update local light field (self-shading may have changed through
+         !# changes in biological state variables). Update_light is set to
+         !# be inline with current aed_phyoplankton, which requires only
+         !# surface par, then integrates over depth of a layer
+         CALL update_light(icolm, col, nlev)
 
-      !# Fudge
-      data(col)%nir(:) = (data(col)%par(:)/par_fraction) * nir_fraction
-      data(col)%uva(:) = (data(col)%par(:)/par_fraction) * uva_fraction
-      data(col)%uvb(:) = (data(col)%par(:)/par_fraction) * uvb_fraction
-!---------
+         ! non PAR bandwidth fractions (set assuming single light extinction)
+         data(col)%nir(:) = (data(col)%par(:)/par_fraction) * nir_fraction
+         data(col)%uva(:) = (data(col)%par(:)/par_fraction) * uva_fraction
+         data(col)%uvb(:) = (data(col)%par(:)/par_fraction) * uvb_fraction
 
          !# Time-integrate one biological time step
          CALL calculate_fluxes(icolm, col, nlev, doSurface)
@@ -1621,14 +1615,11 @@ CONTAINS
 
       CALL check_states(icolm, col, nlev)
 
-#if CUR_VARIANT == GLM_VARIANT
-!CAB ??
       IF (benthic_mode .GT. 1) THEN
          CALL p_calc_zone_areas(aedZones, aed_n_zones, data(col)%area, data(col)%lheights, nlev)
          CALL p_copy_to_zone(aedZones, aed_n_zones, data(col)%lheights, data(col)%cc,  &
                                  data(col)%cc_hz, data(col)%cc_diag, data(col)%cc_diag_hz, nlev)
       ENDIF
-#endif
 
       !# Update local light field (self-shading may have changed through
       !# changes in biological state variables). Update_light is set to
@@ -1643,6 +1634,31 @@ CONTAINS
       data(col)%uva = (data(col)%par/par_fraction) * uva_fraction
       data(col)%uvb = (data(col)%par/par_fraction) * uvb_fraction
    END SUBROUTINE pre_kinetics
+   !++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+
+   !############################################################################
+   SUBROUTINE aed_initialize_zone_benthic(nCols, nlev, n_aed_vars, cc_diag)
+   !----------------------------------------------------------------------------
+   !ARGUMENTS
+      INTEGER,INTENT(in)   :: nCols, nlev
+      INTEGER,INTENT(in)   :: n_aed_vars
+      AED_REAL,INTENT(out) :: cc_diag(:,:)
+   !
+   !LOCALS
+      INTEGER :: col, zon!, bot
+   !
+   !----------------------------------------------------------------------------
+   !BEGIN
+      DO zon=1, aed_n_zones
+         aedZones(zon)%z_cc_diag(:, zon)  = zero_
+
+         CALL aed_initialize_benthic(zon_cols(:,zon), 1)
+      ENDDO
+
+      CALL p_copy_from_zone(aedZones, aed_n_zones, data(col)%lheights, data(col)%cc,  &
+                     data(col)%cc_hz, data(col)%cc_diag, data(col)%cc_diag_hz, nlev)
+   END SUBROUTINE aed_initialize_zone_benthic
    !++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 
 
@@ -1703,9 +1719,8 @@ CONTAINS
 !# assumes only GLM does the odd zoning stuff
       IF ( .NOT. do_zone_averaging ) THEN
          CALL aed_initialize_benthic(icolm, 1)
-  ! CAB: Not yet
-  !   ELSE
-  !      CALL aed_initialize_zone_benthic(nCols, active, n_aed_vars, data(col)%cc_diag, benth_map)
+      ELSE
+         CALL aed_initialize_zone_benthic(nCols, nlev, n_aed_vars, data(col)%cc_diag)
       ENDIF
 #endif
    END SUBROUTINE re_initialize
@@ -1747,7 +1762,7 @@ CONTAINS
             flux_pel_pre = zero_
 
             !# If multiple benthic zones, we must update the benthic variable pointer for the new zone
-          ! IF (zone_var .GT. 0) column_sed(zone_var)%cell_sheet => aedZones(zon)%z_env(1)%z_sed_zones ! CAB???
+            IF (zone_var .GT. 0) column_sed(zone_var)%cell_sheet => aedZones(zon)%z_env(bot)%z_sed_zones ! CAB???
 
             sv = 0 ; sd = 0
             DO av=1,n_aed_vars
@@ -1762,7 +1777,7 @@ CONTAINS
                   IF ( tvar%sheet ) THEN
                      sv = sv + 1
                      IF ( tvar%bot ) THEN
-                        column_sed(av)%cell_sheet => aedZones(zon)%z_cc(1, n_vars+sv)
+                        column_sed(av)%cell_sheet => aedZones(zon)%z_cc(n_vars+sv, bot)
                      ENDIF
                   ENDIF
                ENDIF
@@ -1789,22 +1804,22 @@ CONTAINS
 
             IF ( benthic_mode .EQ. 3 ) THEN
                !# Zone is able to operated on by riparian and dry methods
-               CALL aed_calculate_riparian(column_sed, zon, aedZones(zon)%z_env(1)%z_pc_wet) ! CAB???
-               IF (aedZones(zon)%z_env(1)%z_pc_wet .EQ. 0. ) CALL aed_calculate_dry(column_sed, zlev) !CAB ???
+               CALL aed_calculate_riparian(column_sed, zlev, aedZones(zon)%z_env(1)%z_pc_wet) ! CAB???
+               IF (aedZones(zon)%z_env(1)%z_pc_wet < 0.01 ) CALL aed_calculate_dry(column_sed, zlev) !CAB ???
 
                !# update feedback arrays to host model, to reduce rain (or if -ve then add flow)
-               CALL aed_rain_loss(icolm, 1, localrainl);
+               CALL aed_rain_loss(icolm, bot, localrainl);
                IF (link_rain_loss) rain_factor = localrainl
 
                !# update feedback arrays to shade the water (ie reduce incoming light, Io)
-               CALL aed_light_shading(icolm, 1, localshade)
+               CALL aed_light_shading(icolm, bot, localshade)
                IF (link_solar_shade) sw_factor = localshade
 
                !# now the bgc updates are complete, update links to host model
                IF (aedZones(zon)%z_env(1)%z_pc_wet > 0.99 ) THEN
-                  CALL aed_bio_drag(icolm, 1, localdrag)
-               IF (link_bottom_drag) friction = localdrag
-            ENDIF
+                  CALL aed_bio_drag(icolm, bot, localdrag)
+                  IF (link_bottom_drag) friction = localdrag
+               ENDIF
             ENDIF
 
             !# Calculate temporal derivatives due to benthic processes.
@@ -1812,7 +1827,8 @@ CONTAINS
             flux_pel_pre = flux_pel
 
 !           print*,"Calling ben for zone ",zone_var,zon,z_sed_zones(zon)
-            CALL aed_calculate_benthic(column_sed, bot, .TRUE.)
+            !# pass zone instead of "bot" so aed puts it in a zone area
+            CALL aed_calculate_benthic(column_sed, zon, .TRUE.)
 
             !# Record benthic fluxes in the zone array
             flux_zon(:, zon) = flux_ben(:)
@@ -1829,7 +1845,7 @@ CONTAINS
          DO lev=wlev,1,-1
             IF ( zon .GT. 1 ) THEN
                IF (lev .GT. 1) THEN
-                  splitZone = data(col)%lheights(lev-1) < aedZones(zon-1)%z_env(1)%z_height !CAB ???
+                  splitZone = data(col)%lheights(lev-1) < aedZones(zon-1)%z_env(1)%z_height
                ELSE
                   splitZone = 0.0 < aedZones(zon-1)%z_env(1)%z_height ! CAB???
                ENDIF
@@ -1840,9 +1856,9 @@ CONTAINS
             IF (splitZone) THEN
                IF (lev .GT. 1) THEN
                   scale = (aedZones(zon-1)%z_env(1)%z_height - data(col)%lheights(lev-1)) / &
-                                              (data(col)%lheights(lev) - data(col)%lheights(lev-1)) ! CAB ???
+                                              (data(col)%lheights(lev) - data(col)%lheights(lev-1))
                ELSE
-                  scale = (aedZones(zon-1)%z_env(1)%z_height - 0.0) / (data(col)%lheights(lev) - 0.0) ! CAB???
+                  scale = (aedZones(zon-1)%z_env(1)%z_height - 0.0) / (data(col)%lheights(lev) - 0.0)
                ENDIF
                flux_pel(v_start:v_end,lev) = flux_pel_z(v_start:v_end,zon) * scale
 
@@ -1861,7 +1877,7 @@ CONTAINS
          DO lev=1,wlev
             IF (lev > 1) flux_pel(:, lev) = flux_pel(:, lev) * (data(col)%area(lev)-data(col)%area(lev-1))/data(col)%area(lev)
             DO v=v_start,v_end
-              IF ( data(col)%cc(1, v) .GE. 0.0 ) flux_pel(v, lev) = &
+              IF ( data(col)%cc(v, 1) .GE. 0.0 ) flux_pel(v, lev) = &
                              max(-1.0 * data(col)%cc(v, lev), flux_pel(v, lev)/data(col)%dz(lev))
             END DO
          ENDDO
@@ -1872,7 +1888,7 @@ CONTAINS
          !# model configurations where mass balance of benthic variables is required.
 
          !# Calculate temporal derivatives due to exchanges at the sediment/water interface
-        !IF ( zone_var .GE. 1 ) icolm(zone_var)%cell_sheet => aedZones(1)%z_env(1)%z_sed_zones ! CAB ???
+         IF ( zone_var .GE. 1 ) icolm(zone_var)%cell_sheet => aedZones(1)%z_env(1)%z_sed_zones
          CALL aed_calculate_benthic(icolm, bot)
 
          !# Limit flux out of bottom layers to concentration of that layer
@@ -1921,8 +1937,11 @@ CONTAINS
    !LOCALS
       INTEGER :: lev !, top, bot
       INTEGER :: layer_map(nlev)
-    ! LOGICAL :: glm_version = .FALSE.
+#if CUR_VARIANT == GLM_VARIANT
       LOGICAL :: glm_version = .TRUE.
+#else
+      LOGICAL :: glm_version = .FALSE.
+#endif
    !
    !----------------------------------------------------------------------------
    !BEGIN
@@ -1945,15 +1964,14 @@ CONTAINS
       IF ( glm_version ) THEN
          CALL glm_benthics(icolm, col, nlev, bot)
       ELSE
-! CAB : not yet
-!        IF ( do_zone_averaging ) THEN
-!           flux_pel(:,nlev) = flux_pel(:,nlev) + flux_pel_z(z, bot) !/h(nlev)
-!
-!           !# Calculate temporal derivatives due to benthic exchange processes.
-!           CALL aed_calculate_benthic(icolm, bot, .FALSE.)
-!        ELSE
+         IF ( do_zone_averaging ) THEN
+            flux_pel(:,nlev) = flux_pel(:,nlev) + flux_pel_z(:, bot) !/h(nlev)
+
+            !# Calculate temporal derivatives due to benthic exchange processes.
+            CALL aed_calculate_benthic(icolm, bot, .FALSE.)
+         ELSE
             CALL aed_calculate_benthic(icolm, bot)
-!        ENDIF
+         ENDIF
 
          !# Distribute bottom flux into pelagic over bottom box (i.e., divide by layer height).
          flux_pel(:,bot) = flux_pel(:,bot)/data(col)%lheights(top)
