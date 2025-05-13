@@ -1293,56 +1293,56 @@ SUBROUTINE define_zone_column(zcolm, zon)
             CASE ( 'yearday' )     ; zcolm(av)%cell_sheet => yearday
             CASE ( 'longitude' )   ; zcolm(av)%cell_sheet => aedZones(zon)%longitude
             CASE ( 'latitude' )    ; zcolm(av)%cell_sheet => aedZones(zon)%latitude
-            CASE ( 'col_num' )     ; zcolm(av)%cell_sheet => aedZones(zon)%z_env(1)%z_col_num
+            CASE ( 'col_num' )     ; zcolm(av)%cell_sheet => aedZones(zon)%z_env%z_col_num
 
-            CASE ( 'longwave' )    ; zcolm(av)%cell_sheet => aedZones(zon)%z_env(1)%z_longwave
-            CASE ( 'air_temp' )    ; zcolm(av)%cell_sheet => aedZones(zon)%z_env(1)%z_air_temp
-            CASE ( 'air_pres' )    ; zcolm(av)%cell_sheet => aedZones(zon)%z_env(1)%z_air_pres
-            CASE ( 'humidity' )    ; zcolm(av)%cell_sheet => aedZones(zon)%z_env(1)%z_humidity
-            CASE ( 'wind_speed' )  ; zcolm(av)%cell_sheet => aedZones(zon)%z_env(1)%z_wind
-            CASE ( 'rain' )        ; zcolm(av)%cell_sheet => aedZones(zon)%z_env(1)%z_rain
-            CASE ( 'evap' )        ; zcolm(av)%cell_sheet => aedZones(zon)%z_env(1)%z_evap
-            CASE ( 'par_sf' )      ; zcolm(av)%cell_sheet => aedZones(zon)%z_env(1)%z_I_0
+            CASE ( 'longwave' )    ; zcolm(av)%cell_sheet => aedZones(zon)%z_env%z_longwave
+            CASE ( 'air_temp' )    ; zcolm(av)%cell_sheet => aedZones(zon)%z_env%z_air_temp
+            CASE ( 'air_pres' )    ; zcolm(av)%cell_sheet => aedZones(zon)%z_env%z_air_pres
+            CASE ( 'humidity' )    ; zcolm(av)%cell_sheet => aedZones(zon)%z_env%z_humidity
+            CASE ( 'wind_speed' )  ; zcolm(av)%cell_sheet => aedZones(zon)%z_env%z_wind
+            CASE ( 'rain' )        ; zcolm(av)%cell_sheet => aedZones(zon)%z_env%z_rain
+            CASE ( 'evap' )        ; zcolm(av)%cell_sheet => aedZones(zon)%z_env%z_evap
+            CASE ( 'par_sf' )      ; zcolm(av)%cell_sheet => aedZones(zon)%z_env%z_I_0
 
-            CASE ( 'col_depth' )   ; zcolm(av)%cell_sheet => aedZones(zon)%z_env(1)%z_col_depth
-            CASE ( 'depth' )       ; zcolm(av)%cell => aedZones(zon)%z_env(:)%z_depth
-            CASE ( 'layer_area' )  ; zcolm(av)%cell => aedZones(zon)%z_env(:)%z_area
-            CASE ( 'layer_ht' )    ; zcolm(av)%cell => aedZones(zon)%z_env(:)%z_dz
+            CASE ( 'col_depth' )   ; zcolm(av)%cell_sheet => aedZones(zon)%z_env%z_col_depth
+            CASE ( 'depth' )       ; zcolm(av)%cell => aedZones(:)%z_env%z_depth
+            CASE ( 'layer_area' )  ; zcolm(av)%cell => aedZones(:)%z_env%z_area
+            CASE ( 'layer_ht' )    ; zcolm(av)%cell => aedZones(:)%z_env%z_dz
 
-            CASE ( 'temperature' ) ; zcolm(av)%cell => aedZones(zon)%z_env(:)%z_temp
-            CASE ( 'salinity' )    ; zcolm(av)%cell => aedZones(zon)%z_env(:)%z_salt
-            CASE ( 'cell_vel' )    ; zcolm(av)%cell => aedZones(zon)%z_env(:)%z_vel
-            CASE ( 'pressure' )    ; zcolm(av)%cell => aedZones(zon)%z_env(:)%z_pres
-            CASE ( 'density' )     ; zcolm(av)%cell => aedZones(zon)%z_env(:)%z_rho
-            CASE ( 'rad' )         ; zcolm(av)%cell => aedZones(zon)%z_env(:)%z_rad
+            CASE ( 'temperature' ) ; zcolm(av)%cell => aedZones(:)%z_env%z_temp
+            CASE ( 'salinity' )    ; zcolm(av)%cell => aedZones(:)%z_env%z_salt
+            CASE ( 'cell_vel' )    ; zcolm(av)%cell => aedZones(:)%z_env%z_vel
+            CASE ( 'pressure' )    ; zcolm(av)%cell => aedZones(:)%z_env%z_pres
+            CASE ( 'density' )     ; zcolm(av)%cell => aedZones(:)%z_env%z_rho
+            CASE ( 'rad' )         ; zcolm(av)%cell => aedZones(:)%z_env%z_rad
 
-            CASE ( 'extc_coef' )   ; zcolm(av)%cell => aedZones(zon)%z_env(:)%z_extc
-            CASE ( 'par' )         ; zcolm(av)%cell => aedZones(zon)%z_env(:)%z_par
-            CASE ( 'nir' )         ; zcolm(av)%cell => aedZones(zon)%z_env(:)%z_nir
-            CASE ( 'uva' )         ; zcolm(av)%cell => aedZones(zon)%z_env(:)%z_uva
-            CASE ( 'uvb' )         ; zcolm(av)%cell => aedZones(zon)%z_env(:)%z_uvb
+            CASE ( 'extc_coef' )   ; zcolm(av)%cell => aedZones(:)%z_env%z_extc
+            CASE ( 'par' )         ; zcolm(av)%cell => aedZones(:)%z_env%z_par
+            CASE ( 'nir' )         ; zcolm(av)%cell => aedZones(:)%z_env%z_nir
+            CASE ( 'uva' )         ; zcolm(av)%cell => aedZones(:)%z_env%z_uva
+            CASE ( 'uvb' )         ; zcolm(av)%cell => aedZones(:)%z_env%z_uvb
 
-            CASE ( 'tss' )         ; zcolm(av)%cell => aedZones(zon)%z_env(:)%z_tss
-            CASE ( 'ss1' )         ; zcolm(av)%cell => aedZones(zon)%z_env(:)%z_ss1
-            CASE ( 'ss2' )         ; zcolm(av)%cell => aedZones(zon)%z_env(:)%z_ss2
-            CASE ( 'ss3' )         ; zcolm(av)%cell => aedZones(zon)%z_env(:)%z_ss3
-            CASE ( 'ss4' )         ; zcolm(av)%cell => aedZones(zon)%z_env(:)%z_ss4
+            CASE ( 'tss' )         ; zcolm(av)%cell => aedZones(:)%z_env%z_tss
+            CASE ( 'ss1' )         ; zcolm(av)%cell => aedZones(:)%z_env%z_ss1
+            CASE ( 'ss2' )         ; zcolm(av)%cell => aedZones(:)%z_env%z_ss2
+            CASE ( 'ss3' )         ; zcolm(av)%cell => aedZones(:)%z_env%z_ss3
+            CASE ( 'ss4' )         ; zcolm(av)%cell => aedZones(:)%z_env%z_ss4
 
-            CASE ( 'taub' )        ; zcolm(av)%cell_sheet => aedZones(zon)%z_env(1)%z_layer_stress !CAB ??? (bot)
+            CASE ( 'taub' )        ; zcolm(av)%cell_sheet => aedZones(zon)%z_env%z_layer_stress !CAB ??? (bot)
 
-            CASE ( 'sed_zones' )   ; zcolm(av)%cell => aedZones(zon)%z_env(:)%z_sed_zones; zone_var = av
-            CASE ( 'sed_zone' )    ; zcolm(av)%cell_sheet => aedZones(zon)%z_env(1)%z_sed_zone; zone_var = av
-            CASE ( 'material' )    ; zcolm(av)%cell_sheet => aedZones(zon)%z_env(1)%z_mat_id
+            CASE ( 'sed_zones' )   ; zcolm(av)%cell => aedZones(:)%z_env%z_sed_zones; zone_var = av
+            CASE ( 'sed_zone' )    ; zcolm(av)%cell_sheet => aedZones(zon)%z_env%z_sed_zone; zone_var = av
+            CASE ( 'material' )    ; zcolm(av)%cell_sheet => aedZones(zon)%z_env%z_mat_id
 
-            CASE ( 'bathy' )       ; zcolm(av)%cell_sheet => aedZones(zon)%z_env(1)%z_bathy
+            CASE ( 'bathy' )       ; zcolm(av)%cell_sheet => aedZones(zon)%z_env%z_bathy
         !   CASE ( 'nearest_active' ) ; zcolm(av)%cell_sheet => nearest_active(zon)
         !   CASE ( 'nearest_depth' )  ; zcolm(av)%cell_sheet => nearest_depth(zon)
 
-            CASE ( 'biodrag' )     ; zcolm(av)%cell => aedZones(zon)%z_env(:)%z_biodrag
-            CASE ( 'bioextc' )     ; zcolm(av)%cell => aedZones(zon)%z_env(:)%z_bioextc
-            CASE ( 'solarshade' )  ; zcolm(av)%cell_sheet => aedZones(zon)%z_env(1)%z_solarshade
-            CASE ( 'windshade' )   ; zcolm(av)%cell_sheet => aedZones(zon)%z_env(1)%z_windshade
-            CASE ( 'rainloss' )    ; zcolm(av)%cell_sheet => aedZones(zon)%z_env(1)%z_rainloss
+            CASE ( 'biodrag' )     ; zcolm(av)%cell => aedZones(:)%z_env%z_biodrag
+            CASE ( 'bioextc' )     ; zcolm(av)%cell => aedZones(:)%z_env%z_bioextc
+            CASE ( 'solarshade' )  ; zcolm(av)%cell_sheet => aedZones(zon)%z_env%z_solarshade
+            CASE ( 'windshade' )   ; zcolm(av)%cell_sheet => aedZones(zon)%z_env%z_windshade
+            CASE ( 'rainloss' )    ; zcolm(av)%cell_sheet => aedZones(zon)%z_env%z_rainloss
 
             CASE DEFAULT ; CALL STOPIT("ERROR: external variable "//trim(tvar%name)//" not found.")
          END SELECT
@@ -1692,7 +1692,7 @@ CONTAINS
         !   aedZones(zon)%z_env%z_sed_zones = zon  !MH TMP !CAB ???
 !           print *,'aedZones(zon)%z_sed_zones',aedZones(zon)%z_sed_zones !MH TMP
             !# If multiple benthic zones, we must update the benthic variable pointer for the new zone
-!           IF (zone_var .GT. 0) column_sed(zone_var)%cell_sheet => aedZones(zon)%z_env(1)%z_sed_zones !CAB ???
+!           IF (zone_var .GT. 0) column_sed(zone_var)%cell_sheet => aedZones(zon)%z_env%z_sed_zones !CAB ???
 
             sv = 0 ; sd = 0
 
@@ -1762,19 +1762,17 @@ CONTAINS
             flux_pel_pre = zero_
 
             !# If multiple benthic zones, we must update the benthic variable pointer for the new zone
-            IF (zone_var .GT. 0) column_sed(zone_var)%cell_sheet => aedZones(zon)%z_env(bot)%z_sed_zones ! CAB???
+            IF (zone_var .GT. 0) column_sed(zone_var)%cell_sheet => aedZones(zon)%z_env%z_sed_zones ! CAB???
 
             sv = 0 ; sd = 0
             DO av=1,n_aed_vars
                IF ( .NOT. aed_get_var(av, tvar) ) STOP "Error getting variable info"
 
-               IF ( tvar%diag ) THEN  !# Diagnostic variable
-                  IF ( tvar%sheet ) THEN
+               IF ( tvar%sheet ) THEN
+                  IF ( tvar%diag ) THEN  !# Diagnostic variable
                      sd = sd + 1
                      column_sed(av)%cell_sheet => aedZones(zon)%z_cc_diag_hz(sd)
-                  ENDIF
-               ELSEIF ( .NOT. tvar%extern ) THEN !# State variable
-                  IF ( tvar%sheet ) THEN
+                  ELSEIF ( .NOT. tvar%extern ) THEN !# State variable
                      sv = sv + 1
                      IF ( tvar%bot ) THEN
                         column_sed(av)%cell_sheet => aedZones(zon)%z_cc(n_vars+sv, bot)
@@ -1782,12 +1780,12 @@ CONTAINS
                   ENDIF
                ENDIF
             ENDDO
-            !print*,"Calling ben for zone ",zone_var,zon,z_sed_zones(zon)
+            !print*,"Calling ben for zone ",zon,zone_var,z_sed_zones(zon)
 
             !# (1) ZONE COLUMN UPDATING
             zlev = 0
             DO lev=1,wlev
-               IF (aedZones(zon)%z_env(1)%z_height < data(col)%lheights(lev)) THEN
+               IF (aedZones(zon)%z_env%z_height < data(col)%lheights(lev)) THEN
                   zlev = lev
                   EXIT
                ENDIF
@@ -1804,8 +1802,8 @@ CONTAINS
 
             IF ( benthic_mode .EQ. 3 ) THEN
                !# Zone is able to operated on by riparian and dry methods
-               CALL aed_calculate_riparian(column_sed, zlev, aedZones(zon)%z_env(1)%z_pc_wet) ! CAB???
-               IF (aedZones(zon)%z_env(1)%z_pc_wet < 0.01 ) CALL aed_calculate_dry(column_sed, zlev) !CAB ???
+               CALL aed_calculate_riparian(column_sed, zlev, aedZones(zon)%z_env%z_pc_wet) ! CAB???
+               IF (aedZones(zon)%z_env%z_pc_wet < 0.01 ) CALL aed_calculate_dry(column_sed, zlev) !CAB ???
 
                !# update feedback arrays to host model, to reduce rain (or if -ve then add flow)
                CALL aed_rain_loss(icolm, bot, localrainl);
@@ -1816,7 +1814,7 @@ CONTAINS
                IF (link_solar_shade) sw_factor = localshade
 
                !# now the bgc updates are complete, update links to host model
-               IF (aedZones(zon)%z_env(1)%z_pc_wet > 0.99 ) THEN
+               IF (aedZones(zon)%z_env%z_pc_wet > 0.99 ) THEN
                   CALL aed_bio_drag(icolm, bot, localdrag)
                   IF (link_bottom_drag) friction = localdrag
                ENDIF
@@ -1826,7 +1824,7 @@ CONTAINS
             !# They are stored in flux_ben (benthic vars) and flux_pel (water vars)
             flux_pel_pre = flux_pel
 
-!           print*,"Calling ben for zone ",zone_var,zon,z_sed_zones(zon)
+            !print*,"Calling ben for zone ",zon,zone_var,aedZones(zon)%z_env%z_sed_zones
             !# pass zone instead of "bot" so aed puts it in a zone area
             CALL aed_calculate_benthic(column_sed, zon, .TRUE.)
 
@@ -1845,9 +1843,9 @@ CONTAINS
          DO lev=wlev,1,-1
             IF ( zon .GT. 1 ) THEN
                IF (lev .GT. 1) THEN
-                  splitZone = data(col)%lheights(lev-1) < aedZones(zon-1)%z_env(1)%z_height
+                  splitZone = data(col)%lheights(lev-1) < aedZones(zon-1)%z_env%z_height
                ELSE
-                  splitZone = 0.0 < aedZones(zon-1)%z_env(1)%z_height ! CAB???
+                  splitZone = 0.0 < aedZones(zon-1)%z_env%z_height ! CAB???
                ENDIF
             ELSE
                splitZone = .FALSE.
@@ -1855,10 +1853,10 @@ CONTAINS
 
             IF (splitZone) THEN
                IF (lev .GT. 1) THEN
-                  scale = (aedZones(zon-1)%z_env(1)%z_height - data(col)%lheights(lev-1)) / &
+                  scale = (aedZones(zon-1)%z_env%z_height - data(col)%lheights(lev-1)) / &
                                               (data(col)%lheights(lev) - data(col)%lheights(lev-1))
                ELSE
-                  scale = (aedZones(zon-1)%z_env(1)%z_height - 0.0) / (data(col)%lheights(lev) - 0.0)
+                  scale = (aedZones(zon-1)%z_env%z_height - 0.0) / (data(col)%lheights(lev) - 0.0)
                ENDIF
                flux_pel(v_start:v_end,lev) = flux_pel_z(v_start:v_end,zon) * scale
 
@@ -1888,7 +1886,7 @@ CONTAINS
          !# model configurations where mass balance of benthic variables is required.
 
          !# Calculate temporal derivatives due to exchanges at the sediment/water interface
-         IF ( zone_var .GE. 1 ) icolm(zone_var)%cell_sheet => aedZones(1)%z_env(1)%z_sed_zones
+         IF ( zone_var .GE. 1 ) icolm(zone_var)%cell_sheet => aedZones(1)%z_env%z_sed_zones
          CALL aed_calculate_benthic(icolm, bot)
 
          !# Limit flux out of bottom layers to concentration of that layer
@@ -1935,7 +1933,7 @@ CONTAINS
       LOGICAL,INTENT(in) :: doSurface
    !
    !LOCALS
-      INTEGER :: lev !, top, bot
+      INTEGER :: lev
       INTEGER :: layer_map(nlev)
 #if CUR_VARIANT == GLM_VARIANT
       LOGICAL :: glm_version = .TRUE.

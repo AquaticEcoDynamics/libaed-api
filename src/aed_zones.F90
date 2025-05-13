@@ -107,7 +107,7 @@ MODULE aed_zones
    TYPE :: api_zone_t
       INTEGER  :: n_levs
 
-      TYPE(api_zone_env_t),DIMENSION(:),ALLOCATABLE :: z_env
+      TYPE(api_zone_env_t) :: z_env
 
       AED_REAL,DIMENSION(:,:),POINTER :: z_cc         !(n_vars, n_levs)
       AED_REAL,DIMENSION(:),  POINTER :: z_cc_hz      !(n_vars_ben, 2)
@@ -195,7 +195,6 @@ SUBROUTINE aed_init_zones(n_zones, n_levs, z_cc, z_cc_hz, z_diag, z_diag_hz)
 
    DO zon=1,n_zones
       aedZones(zon)%n_levs = n_levs
-      ALLOCATE(aedZones(zon)%z_env(n_levs))
 
       aedZones(zon)%z_env%z_sed_zone = zon
       aedZones(zon)%z_env%z_sed_zones = zon
