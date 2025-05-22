@@ -768,10 +768,10 @@ SUBROUTINE aed_set_model_data(dat, ncols, nlevs)
       IF (status /= 0) STOP 'allocate_memory(): Error allocating "zon_cols"'
    ENDIF
 
-   IF (.NOT.ALLOCATED(flux_zon))   ALLOCATE(flux_zon(n_aed_vars, aed_n_zones))
-   IF (.NOT.ALLOCATED(flux_ben))   ALLOCATE(flux_ben(n_aed_vars))
-   IF (.NOT.ALLOCATED(flux_atm))   ALLOCATE(flux_atm(n_aed_vars))
-   IF (.NOT.ALLOCATED(flux_rip))   ALLOCATE(flux_rip(n_aed_vars))
+   IF (.NOT.ALLOCATED(flux_zon))     ALLOCATE(flux_zon(n_aed_vars, aed_n_zones))
+   IF (.NOT.ALLOCATED(flux_ben))     ALLOCATE(flux_ben(n_aed_vars))
+   IF (.NOT.ALLOCATED(flux_atm))     ALLOCATE(flux_atm(n_aed_vars))
+   IF (.NOT.ALLOCATED(flux_rip))     ALLOCATE(flux_rip(n_aed_vars))
 
    IF (.NOT.ALLOCATED(flux_pel))     ALLOCATE(flux_pel(    n_aed_vars, MAX(MaxLayers, aed_n_zones)))
    IF (.NOT.ALLOCATED(flux_pel_pre)) ALLOCATE(flux_pel_pre(n_aed_vars, MAX(MaxLayers, aed_n_zones)))
@@ -834,12 +834,12 @@ END SUBROUTINE aed_set_model_data
 
 
 !###############################################################################
-SUBROUTINE aed_set_model_env(env, ncols)
+SUBROUTINE aed_set_model_env(env, nlayrs, ncols)
 !-------------------------------------------------------------------------------
 ! Routine to set environment (external) variables to main column "data" array
 !-------------------------------------------------------------------------------
 !ARGUMENTS
-   INTEGER,INTENT(in) :: ncols
+   INTEGER,INTENT(in) :: nlayrs, ncols
    TYPE(aed_env_t),INTENT(in) :: env(ncols)
 !
 !LOCALS
@@ -850,6 +850,8 @@ SUBROUTINE aed_set_model_env(env, ncols)
 !
 !-------------------------------------------------------------------------------
 !BEGIN
+   IF (MaxLayers < nlayrs) MaxLayers = nlayrs
+
    !# Allocate main AED column arrays
    IF (.NOT. ALLOCATED(data) ) THEN
       ALLOCATE(data(ncols),stat=status)
