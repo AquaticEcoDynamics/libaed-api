@@ -47,7 +47,7 @@ MODULE aed_ptm
 
    PRIVATE ! By default, make everything private
 
-   PUBLIC aed_part_group_t, aed_ptm_init, ptm_istat, ptm_env
+   PUBLIC aed_part_group_t, aed_ptm_init, ptm_istat, ptm_env, Particles, aed_calculate_particles
 
 
    !#--------------------------------------------------------------------------#
@@ -84,6 +84,7 @@ MODULE aed_ptm
 !  END TYPE partgroup_cell
 
 
+
 !
 !-------------------------------------------------------------------------------
 !
@@ -101,18 +102,27 @@ MODULE aed_ptm
    INTEGER, PARAMETER :: n_ptm_env = 10
    INTEGER :: aed_n_particles
 
+   !# Particle groups
+!   INTEGER :: num_groups
+!   TYPE(partgroup),DIMENSION(:),POINTER :: particle_groups
+   TYPE(partgroup_cell),DIMENSION(:),ALLOCATABLE, TARGET :: all_particles
 
+   INTEGER, PARAMETER :: STAT = 1  !#define STAT   0
+   INTEGER, PARAMETER :: IDX2 = 2  !#define IDX2   1
+   INTEGER, PARAMETER :: IDX3 = 3  !#define IDX3   2
+   INTEGER, PARAMETER :: LAYR = 4  !#define LAYR   3
+   INTEGER, PARAMETER :: FLAG = 5  !#define FLAG   4
 !===============================================================================
 CONTAINS
 
 !###############################################################################
-SUBROUTINE aed_ptm_init(ng,np,parts,  n_vars, n_vars_ben, n_vars_diag, n_vars_diag_sheet)
+SUBROUTINE aed_ptm_init(ng,np,parts,n_vars,n_vars_ben,n_vars_diag,n_vars_diag_sheet,n_cells)
 !-------------------------------------------------------------------------------
 ! Initialise the particle tracker.
 !-------------------------------------------------------------------------------
 !ARGUMENTS
    CINTEGER, INTENT(in) :: ng,np
-   INTEGER, INTENT(in) :: n_vars, n_vars_ben, n_vars_diag, n_vars_diag_sheet
+   INTEGER, INTENT(in) :: n_vars, n_vars_ben, n_vars_diag, n_vars_diag_sheet, n_cells
    TYPE(aed_part_group_t),DIMENSION(:),TARGET,INTENT(in) :: parts
 !LOCALS
    INTEGER :: rc
@@ -159,27 +169,32 @@ SUBROUTINE aed_ptm_init(ng,np,parts,  n_vars, n_vars_ben, n_vars_diag, n_vars_di
     ptm_env(1,1,1) = 111.1
 
 
+   !print*,"allocating all_parts with ", ubound(temp,1), " cells"
+   ALLOCATE(all_particles(n_cells))   
+
+
 END SUBROUTINE aed_ptm_init
 !+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 
 
+
 !###############################################################################
-SUBROUTINE Particles(column, count, layer_particles)
+SUBROUTINE Particles(n_cells)
 !-------------------------------------------------------------------------------
 !
 ! Calculate biogeochemical transformations on particles 
 !
 !-------------------------------------------------------------------------------
 !ARGUMENTS
-   TYPE (aed_column_t), INTENT(inout) :: column(:)
-   TYPE(partgroup_cell), INTENT(inout) :: layer_particles(:)
-   INTEGER,  INTENT(in)    :: count
+!   TYPE (aed_column_t), INTENT(inout) :: column(:)
+   !TYPE(partgroup_cell), INTENT(inout) :: layer_particles(:)
+   INTEGER,  INTENT(in)    :: n_cells
 !
 !LOCAL VARIABLES:
    INTEGER :: lev, grp, prt, n, pt, NU
    INTEGER :: ppid
    AED_REAL,DIMENSION(20) :: zz
-   INTEGER :: stat, idxi3
+   INTEGER :: cell, j, ii, count_check
    AED_REAL :: dt = 3600
 
    TYPE (aed_ptm_t) :: ptm
@@ -191,32 +206,138 @@ SUBROUTINE Particles(column, count, layer_particles)
    IF (aed_n_groups == 0 .OR. aed_n_particles == 0) RETURN
    zz = zero_
 
-   DO lev=1,count
+!------------
+      print*,"PTM START", aed_n_groups, aed_n_particles
+
+      DO cell=1, size(all_particles)
+         IF (ALLOCATED(all_particles(cell)%prt)) DEALLOCATE(all_particles(cell)%prt)
+         all_particles(cell)%count = 0
+      ENDDO 
+      count_check = 0
+      DO grp=1,aed_n_groups
+            print*,"PTM GRP", grp
+
+         ! First, loop through all particles, and count how mnay are in each cell
+         DO prt=1,aed_n_particles
+           IF (prt<30) print *,'STAT', prt,ptm_istat(grp,prt,STAT),ptm_istat(grp,prt,IDX3) 
+            IF ( ptm_istat(grp,prt,STAT) >= 0 ) THEN
+               cell = ptm_istat(grp,prt,IDX3)
+               IF ( cell >= 1 .AND. cell <= size(all_particles) ) THEN
+                  all_particles(cell)%count = all_particles(cell)%count + 1
+              !ELSE
+              !   print*,"idx out of range", i, size(all_particles)
+              !   stop
+               ENDIF
+            ENDIF
+         ENDDO
+         DO ii=1,n_cells
+             count_check = count_check+all_particles(ii)%count
+             print*,"PTM CELL", ii, all_particles(ii)%count
+         ENDDO
+         print*,"PTM CHK", count_check
+            
+!     ENDDO
+!     DO grp=1,num_groups
+         ! Now, loop through all particles, and populate the particle-cell object
+         DO prt=1,aed_n_particles
+            IF ( ptm_istat(grp,prt,STAT) < 0 ) CYCLE  !# ignore these
+
+            cell = ptm_istat(grp,prt,IDX3)
+            IF ( cell >= 1 .AND. cell <= size(all_particles) ) THEN
+               ! If the particle is in a cell, first check if the particle-cell
+               ! object is already allocated. If not, allocate it and init n to 0
+               IF (.NOT. ALLOCATED(all_particles(cell)%prt)) THEN
+                  ALLOCATE(all_particles(cell)%prt(all_particles(cell)%count))
+                  all_particles(cell)%n = 0
+               ENDIF
+               ! Increment the new particle that was found in the particle-cell object
+               ! and if this is less than the total count, add the new particle to the list
+               j = all_particles(cell)%n + 1              ! add new particle
+               IF (j <= all_particles(cell)%count ) THEN  
+                  all_particles(cell)%prt(j)%grp = grp
+                  all_particles(cell)%prt(j)%idx = prt
+                  all_particles(cell)%n = j
+                  print*,"PTM", grp, prt, cell, j, all_particles(cell)%count
+              !ELSE
+              !   print*,"Ooops, error in PTM", j, all_particles(i)%count
+               ENDIF
+!           ELSE
+!              print*,"idx out of range", i, size(all_particles)
+!              print*,"grp", grp, " prt ",prt
+!              print*,"istat 1", particle_groups(grp)%istat(1,prt)
+!              print*,"istat 2", particle_groups(grp)%istat(2,prt)
+!              print*,"istat 3", particle_groups(grp)%istat(3,prt)
+!              print*,"istat 4", particle_groups(grp)%istat(4,prt)
+!              stop
+            ENDIF
+         ENDDO ! particles
+      ENDDO    ! groups
+!   ENDIF
+!-------
+
+
+END SUBROUTINE Particles
+!+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+
+!###############################################################################
+SUBROUTINE aed_calculate_particles(icolm, col, nlev)
+!-------------------------------------------------------------------------------
+!
+! Calculate biogeochemical transformations on particles 
+!
+!-------------------------------------------------------------------------------
+!ARGUMENTS
+   TYPE(aed_column_t),INTENT(inout) :: icolm(:)
+   INTEGER,INTENT(in)               :: col, nlev
+!
+!LOCAL VARIABLES:
+   INTEGER :: lev, grp, prt, n, pt, NU
+   INTEGER :: ppid
+   AED_REAL :: dt = 3600
+
+   TYPE (aed_ptm_t) :: ptm
+
+   TYPE(partgroup_cell), POINTER :: layer_particles
+!
+!-------------------------------------------------------------------------------
+ 
+!BEGIN
+   IF (aed_n_groups == 0 .OR. aed_n_particles == 0) RETURN
+
+   DO lev=1,nlev
+   ENDDO
+
+   DO lev=1,nlev
+      layer_particles => all_particles(lev)   
+      
+      print *, "ptm", lev, layer_particles%count
+      IF (layer_particles%count == 0) CYCLE
 
       ppid = 0          ! new cell identifier, to allow cumulation of prts
+      DO pt=1,layer_particles%count
 
-      DO pt=1,layer_particles(lev)%count
+         ! Retrieve particle properties, from the particle-cell object
+         grp = layer_particles%prt(pt)%grp ; prt = layer_particles%prt(pt)%idx
 
-         grp = layer_particles(lev)%prt(pt)%grp ; prt = layer_particles(lev)%prt(pt)%idx
-         !stat  = ptm_istat(grp,part,idx_stat) ! particle_groups(grp)%idx_stat   ! should be 1
-         !idxi3 = ptm_istat(grp,part,idx_3)    ! should be 3
+         print *, "ppp", lev, pt, grp, prt
 
+         ! Point single particle object to the global particle data structure
          ptm%ptm_istat => ptm_istat(grp,prt,:)
-         ptm%ptm_env => ptm_env(grp,prt,:)
+         ptm%ptm_env   => ptm_env(grp,prt,:)
          ptm%ptm_state => ptm_state(grp,prt,:)
-         ptm%ptm_diag => ptm_diag(grp,prt,:)
+         ptm%ptm_diag  => ptm_diag(grp,prt,:)
 
-         IF ( ptm_istat(grp,prt,1) >= 0 ) THEN
+         print *,'ptm_istat(grp,prt,STAT)',ptm_istat(grp,prt,STAT), ptm%ptm_istat
 
-            !CALL aed_particle_bgc(column,lev,ppid,zz)     !ppid getting incremeted in here
-
-            CALL aed_particle_bgc(column,lev,ppid,p=ptm)     
-
+         ! Pass through the particle to AED modules, if its active
+         IF ( ptm_istat(grp,prt,STAT) >= 0 ) THEN
+            CALL aed_particle_bgc(icolm,lev,ppid,p=ptm) ! Note: ppid getting incremeted in here
          ENDIF
 
       ENDDO
    ENDDO
-END SUBROUTINE Particles
+END SUBROUTINE aed_calculate_particles
 !+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 
 
@@ -315,3 +436,6 @@ END SUBROUTINE Particles_zz
 
 
 END MODULE aed_ptm
+
+
+

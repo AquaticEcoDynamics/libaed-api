@@ -66,6 +66,7 @@ MODULE aed_api
    USE aed_util
    USE aed_common
    USE aed_zones
+   USE aed_ptm, ONLY : Particles, aed_calculate_particles
 
    IMPLICIT NONE
 
@@ -419,6 +420,7 @@ MODULE aed_api
 
    INTEGER :: MaxLayers = 0
    INTEGER :: zone_var = 0
+   INTEGER :: call_count = 0
 
    AED_REAL :: dt_eff
    LOGICAL :: reinited = .FALSE.
@@ -1452,6 +1454,7 @@ SUBROUTINE aed_run_model(nCols, nLevs, doSurface)
 
    !# reset effective time/step
    dt_eff = timestep/FLOAT(split_factor)
+   call_count = call_count + 1
 
    !----------------------------------------------------------------------------
    !# Resetting and re-initialisation tasks
@@ -1481,6 +1484,17 @@ SUBROUTINE aed_run_model(nCols, nLevs, doSurface)
    !  IF (.NOT. active(col)) CYCLE  !# skip this column if dry
       CALL aed_run_column(all_cols(:,col), col, nLevs, doSurface)
    ENDDO
+
+   !----------------------------------------------------------------------------
+   !# Particle tracking tasks
+  ! IF (do_particle_bgc) THEN
+     print *,'Particle BGC', call_count, nLevs
+     CALL Particles(nLevs)
+     DO col=1, nCols
+       !IF (.NOT. active(col)) CYCLE  !# skip this column if dry
+       CALL aed_calculate_particles(all_cols(:,col), col, nLevs)
+     ENDDO
+  ! ENDIF 
 
 !-------------------------------------------------------------------------------
 CONTAINS
