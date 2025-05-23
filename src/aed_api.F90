@@ -109,6 +109,7 @@ MODULE aed_api
       LOGICAL  :: link_solar_shade
       LOGICAL  :: link_bottom_drag
       LOGICAL  :: ice
+      LOGICAL  :: do_particle_bgc
 
       INTEGER  :: split_factor = 1
       INTEGER  :: benthic_mode = 1
@@ -355,6 +356,7 @@ MODULE aed_api
    LOGICAL :: link_ext_par = .FALSE.
 
    LOGICAL :: do_2d_atm_flux = .TRUE.
+   LOGICAL :: do_particle_bgc = .FALSE.
 
    LOGICAL :: bottom_one = .TRUE.
 
@@ -729,6 +731,7 @@ SUBROUTINE aed_set_coupling(conf)
    link_rain_loss = conf%link_rain_loss
    link_solar_shade = conf%link_solar_shade
    link_bottom_drag = conf%link_bottom_drag
+   do_particle_bgc = conf%do_particle_bgc
 
    split_factor = conf%split_factor
    IF (split_factor == 0) split_factor = 1
@@ -1487,14 +1490,14 @@ SUBROUTINE aed_run_model(nCols, nLevs, doSurface)
 
    !----------------------------------------------------------------------------
    !# Particle tracking tasks
-  ! IF (do_particle_bgc) THEN
+   IF (do_particle_bgc) THEN
      print *,'Particle BGC', call_count, nLevs
      CALL Particles(nLevs)
      DO col=1, nCols
        !IF (.NOT. active(col)) CYCLE  !# skip this column if dry
        CALL aed_calculate_particles(all_cols(:,col), col, nLevs)
      ENDDO
-  ! ENDIF 
+   ENDIF 
 
 !-------------------------------------------------------------------------------
 CONTAINS
