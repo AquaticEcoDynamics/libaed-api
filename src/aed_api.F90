@@ -588,8 +588,9 @@ INTEGER FUNCTION aed_configure_models(fname, NumWQ_Vars, NumWQ_Ben, NumWQ_Diag, 
 !-------------------------------------------------------------------------------
 !ARGUMENTS
    CHARACTER(*),INTENT(in) :: fname
-   INTEGER,INTENT(out) :: NumWQ_Vars, NumWQ_Ben, NumPTM_Vars
+   INTEGER,INTENT(out) :: NumWQ_Vars, NumWQ_Ben
    INTEGER,INTENT(out) :: NumWQ_Diag, NumWQ_DiagS
+   INTEGER,OPTIONAL,INTENT(out) :: NumPTM_Vars
 !
 !LOCALS
    INTEGER :: status, i, namlst
@@ -678,7 +679,7 @@ INTEGER FUNCTION aed_configure_models(fname, NumWQ_Vars, NumWQ_Ben, NumWQ_Diag, 
    NumWQ_Ben   = n_vars_ben
    NumWQ_Diag  = n_vars_diag
    NumWQ_DiagS = n_vars_diag_sheet
-   NumPTM_Vars = n_ptm_vars
+   IF (PRESENT(NumPTM_Vars)) NumPTM_Vars = n_ptm_vars
 
    print*,'     ----------  AED API config : end  ----------'
 
