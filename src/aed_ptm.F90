@@ -210,7 +210,7 @@ SUBROUTINE Particles(n_cells)
    zz = zero_
 
 !------------
-      print*,"PTM START", aed_n_groups, aed_n_particles
+      !print*,"PTM START", aed_n_groups, aed_n_particles
 
       DO cell=1, size(all_particles)
          IF (ALLOCATED(all_particles(cell)%prt)) DEALLOCATE(all_particles(cell)%prt)
@@ -218,7 +218,7 @@ SUBROUTINE Particles(n_cells)
       ENDDO 
       count_check = 0
       DO grp=1,aed_n_groups
-            print*,"PTM GRP", grp
+            !print*,"PTM GRP", grp
 
          ! First, loop through all particles, and count how mnay are in each cell
          DO prt=1,aed_n_particles
@@ -235,9 +235,9 @@ SUBROUTINE Particles(n_cells)
          ENDDO
          DO ii=1,n_cells
              count_check = count_check+all_particles(ii)%count
-             print*,"PTM CELL", ii, all_particles(ii)%count
+             !print*,"PTM CELL", ii, all_particles(ii)%count
          ENDDO
-         print*,"PTM CHK", count_check
+         !print*,"PTM CHK", count_check
             
 !     ENDDO
 !     DO grp=1,num_groups
@@ -260,7 +260,7 @@ SUBROUTINE Particles(n_cells)
                   all_particles(cell)%prt(j)%grp = grp
                   all_particles(cell)%prt(j)%idx = prt
                   all_particles(cell)%n = j
-                  print*,"PTM", grp, prt, cell, j, all_particles(cell)%count
+                  !print*,"PTM", grp, prt, cell, j, all_particles(cell)%count
               !ELSE
               !   print*,"Ooops, error in PTM", j, all_particles(i)%count
                ENDIF
@@ -314,7 +314,7 @@ SUBROUTINE aed_calculate_particles(icolm, col, nlev)
    DO lev=1,nlev
       layer_particles => all_particles(lev)   
       
-      print *, "ptm", lev, layer_particles%count
+      !print *, "ptm", lev, layer_particles%count
       IF (layer_particles%count == 0) CYCLE
 
       ppid = 0          ! new cell identifier, to allow cumulation of prts
@@ -323,7 +323,7 @@ SUBROUTINE aed_calculate_particles(icolm, col, nlev)
          ! Retrieve particle properties, from the particle-cell object
          grp = layer_particles%prt(pt)%grp ; prt = layer_particles%prt(pt)%idx
 
-         print *, "ppp", lev, pt, grp, prt
+         !print *, "ppp", lev, pt, grp, prt
 
          ! Point single particle object to the global particle data structure
          ptm%ptm_istat => ptm_istat(grp,prt,:)
@@ -331,7 +331,7 @@ SUBROUTINE aed_calculate_particles(icolm, col, nlev)
          ptm%ptm_state => ptm_env(grp,prt,n_ptm_env+1:n_ptm_vars)    !ptm_state(grp,prt,:) 
          ptm%ptm_diag  => ptm_diag(grp,prt,:)
 
-         print *,'ptm_istat(grp,prt,STAT)',ptm_istat(grp,prt,STAT), ptm%ptm_istat
+         !print *,'ptm_istat(grp,prt,STAT)',ptm_istat(grp,prt,STAT), ptm%ptm_istat
 
          ! Pass through the particle to AED modules, if its active
          IF ( ptm_istat(grp,prt,STAT) >= 0 ) THEN
