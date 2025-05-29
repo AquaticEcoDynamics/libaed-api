@@ -98,7 +98,7 @@ MODULE aed_ptm
    AED_REAL,DIMENSION(:,:,:),ALLOCATABLE, TARGET :: ptm_state       !# AED particle data structure (NGroups,NParticles,NAttributes)
    AED_REAL,DIMENSION(:,:,:),ALLOCATABLE, TARGET :: ptm_diag        !# AED particle data structure (NGroups,NParticles,NAttributes)
 
-   INTEGER, PARAMETER :: n_ptm_istat = 5
+   INTEGER, PARAMETER :: n_ptm_istat = 6
    INTEGER, PARAMETER :: n_ptm_env   = 5
    INTEGER            :: n_ptm_vars  = 0
    INTEGER            :: aed_n_particles
@@ -113,6 +113,7 @@ MODULE aed_ptm
    INTEGER, PARAMETER :: IDX3 = 3  !#define IDX3   2
    INTEGER, PARAMETER :: LAYR = 4  !#define LAYR   3
    INTEGER, PARAMETER :: FLAG = 5  !#define FLAG   4
+   INTEGER, PARAMETER :: PTID = 6  !#define PTID   5
 !===============================================================================
 CONTAINS
 
