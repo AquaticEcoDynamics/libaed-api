@@ -98,9 +98,10 @@ MODULE aed_ptm
    AED_REAL,DIMENSION(:,:,:),ALLOCATABLE, TARGET :: ptm_state       !# AED particle data structure (NGroups,NParticles,NAttributes)
    AED_REAL,DIMENSION(:,:,:),ALLOCATABLE, TARGET :: ptm_diag        !# AED particle data structure (NGroups,NParticles,NAttributes)
 
-   INTEGER, PARAMETER :: n_ptm_istat = 5
-   INTEGER, PARAMETER :: n_ptm_env = 10
-   INTEGER :: aed_n_particles
+   INTEGER, PARAMETER :: n_ptm_istat = 6
+   INTEGER, PARAMETER :: n_ptm_env   = 5
+   INTEGER            :: n_ptm_vars  = 0
+   INTEGER            :: aed_n_particles
 
    !# Particle groups
 !   INTEGER :: num_groups
@@ -112,17 +113,18 @@ MODULE aed_ptm
    INTEGER, PARAMETER :: IDX3 = 3  !#define IDX3   2
    INTEGER, PARAMETER :: LAYR = 4  !#define LAYR   3
    INTEGER, PARAMETER :: FLAG = 5  !#define FLAG   4
+   INTEGER, PARAMETER :: PTID = 6  !#define PTID   5
 !===============================================================================
 CONTAINS
 
 !###############################################################################
-SUBROUTINE aed_ptm_init(ng,np,parts,n_vars,n_vars_ben,n_vars_diag,n_vars_diag_sheet,n_cells)
+SUBROUTINE aed_ptm_init(ng,np,parts,n_ptm_vars_,n_cells)
 !-------------------------------------------------------------------------------
 ! Initialise the particle tracker.
 !-------------------------------------------------------------------------------
 !ARGUMENTS
    CINTEGER, INTENT(in) :: ng,np
-   INTEGER, INTENT(in) :: n_vars, n_vars_ben, n_vars_diag, n_vars_diag_sheet, n_cells
+   INTEGER,  INTENT(in) :: n_ptm_vars_, n_cells
    TYPE(aed_part_group_t),DIMENSION(:),TARGET,INTENT(in) :: parts
 !LOCALS
    INTEGER :: rc
@@ -134,6 +136,8 @@ SUBROUTINE aed_ptm_init(ng,np,parts,n_vars,n_vars_ben,n_vars_diag,n_vars_diag_sh
    aed_n_groups = ng
    aed_n_particles = np
 
+   n_ptm_vars = n_ptm_vars_
+
    IF (.NOT. ASSOCIATED(particle_groups)) THEN
       particle_groups => parts
    ENDIF
@@ -143,9 +147,9 @@ SUBROUTINE aed_ptm_init(ng,np,parts,n_vars,n_vars_ben,n_vars_diag,n_vars_diag_sh
      IF (rc /= 0) STOP 'allocate_memory(): ERROR allocating (ptm_istat)'
    ALLOCATE(ptm_env(aed_n_groups,1:aed_n_particles,1:n_ptm_env),stat=rc)
      IF (rc /= 0) STOP 'allocate_memory(): ERROR allocating (ptm_env)'
-   ALLOCATE(ptm_state(aed_n_groups,1:aed_n_particles,1:(n_vars+n_vars_ben)),stat=rc)
+   ALLOCATE(ptm_state(aed_n_groups,1:aed_n_particles,1:n_ptm_vars),stat=rc)
      IF (rc /= 0) STOP 'allocate_memory(): ERROR allocating (ptm_state)'
-   ALLOCATE(ptm_diag(aed_n_groups,1:aed_n_particles,1:(n_vars_diag+n_vars_diag_sheet)),stat=rc)
+   ALLOCATE(ptm_diag(aed_n_groups,1:aed_n_particles,1:n_ptm_vars),stat=rc) ! Not yet used
      IF (rc /= 0) STOP 'allocate_memory(): ERROR allocating (ptm_diag)'
 
    ptm_istat(:,:,:) = -9999
@@ -324,8 +328,8 @@ SUBROUTINE aed_calculate_particles(icolm, col, nlev)
 
          ! Point single particle object to the global particle data structure
          ptm%ptm_istat => ptm_istat(grp,prt,:)
-         ptm%ptm_env   => ptm_env(grp,prt,:)
-         ptm%ptm_state => ptm_state(grp,prt,:)
+         ptm%ptm_env   => ptm_env(grp,prt,1:n_ptm_env)
+         ptm%ptm_state => ptm_env(grp,prt,n_ptm_env+1:n_ptm_vars)    !ptm_state(grp,prt,:) 
          ptm%ptm_diag  => ptm_diag(grp,prt,:)
 
          print *,'ptm_istat(grp,prt,STAT)',ptm_istat(grp,prt,STAT), ptm%ptm_istat

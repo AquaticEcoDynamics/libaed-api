@@ -405,7 +405,8 @@ MODULE aed_api
    !#------------------------------------------------------------
 
    !# Integers storing number of variables being simulated
-   INTEGER :: n_aed_vars, n_vars, n_vars_ben, n_vars_diag, n_vars_diag_sheet
+   INTEGER :: n_aed_vars, n_vars, n_vars_ben, n_ptm_vars
+   INTEGER :: n_vars_diag, n_vars_diag_sheet
 
    CHARACTER(len=48),ALLOCATABLE :: names(:)
    CHARACTER(len=48),ALLOCATABLE :: bennames(:)
@@ -581,13 +582,13 @@ END SUBROUTINE aed_show_vars
 
 
 !###############################################################################
-INTEGER FUNCTION aed_configure_models(fname, NumWQ_Vars, NumWQ_Ben, NumWQ_Diag, NumWQ_DiagS)
+INTEGER FUNCTION aed_configure_models(fname, NumWQ_Vars, NumWQ_Ben, NumWQ_Diag, NumWQ_DiagS, NumPTM_Vars)
 !-------------------------------------------------------------------------------
 ! Initializes the AED-API driver by reading settings from "fname"
 !-------------------------------------------------------------------------------
 !ARGUMENTS
    CHARACTER(*),INTENT(in) :: fname
-   INTEGER,INTENT(out) :: NumWQ_Vars, NumWQ_Ben
+   INTEGER,INTENT(out) :: NumWQ_Vars, NumWQ_Ben, NumPTM_Vars
    INTEGER,INTENT(out) :: NumWQ_Diag, NumWQ_DiagS
 !
 !LOCALS
@@ -649,7 +650,7 @@ INTEGER FUNCTION aed_configure_models(fname, NumWQ_Vars, NumWQ_Ben, NumWQ_Diag, 
    CLOSE(namlst)
    print *,"      ... nml file parsing completed."
 
-   n_aed_vars = aed_core_status(n_vars, n_vars_ben, n_vars_diag, n_vars_diag_sheet)
+   n_aed_vars = aed_core_status(n_vars, n_vars_ben, n_vars_diag, n_vars_diag_sheet, n_ptm_vars)
 
 #if DEBUG
    DO i=1,n_aed_vars
@@ -661,9 +662,11 @@ INTEGER FUNCTION aed_configure_models(fname, NumWQ_Vars, NumWQ_Ben, NumWQ_Diag, 
    ENDDO
 #endif
 
-   print "(/,5X,'AED : n_aed_vars  = ',I3,' ; MaxLayers         = ',I4)",n_aed_vars,MaxLayers
-   print "(  5X,'AED : n_vars      = ',I3,' ; n_vars_ben        = ',I4)",n_vars,n_vars_ben
+   print "(/,5X,'AED : n_aed_vars  = ',I3,' ; n_vars            = ',I4)",n_aed_vars,n_vars
+   print "(  5X,'AED : n_vars_ben  = ',I3,' ; n_ptm_vars        = ',I4)",n_vars_ben,n_ptm_vars
    print "(  5X,'AED : n_vars_diag = ',I3,' ; n_vars_diag_sheet = ',I4,/)",n_vars_diag,n_vars_diag_sheet
+
+   print "(/,5X,'AED : MaxLayers         = ',I4)",MaxLayers
 
    !# names = grab the names from info
    ALLOCATE(names(n_vars),stat=status)
@@ -675,6 +678,7 @@ INTEGER FUNCTION aed_configure_models(fname, NumWQ_Vars, NumWQ_Ben, NumWQ_Diag, 
    NumWQ_Ben   = n_vars_ben
    NumWQ_Diag  = n_vars_diag
    NumWQ_DiagS = n_vars_diag_sheet
+   NumPTM_Vars = n_ptm_vars
 
    print*,'     ----------  AED API config : end  ----------'
 
