@@ -1476,14 +1476,14 @@ SUBROUTINE aed_run_model(nCols, nLevs, doSurface)
 
    !----------------------------------------------------------------------------
    !# Particle tracking tasks
-!  IF (do_particle_bgc) THEN
-!  !  print *,'Particle BGC', call_count, nLevs
-!     CALL Particles(nLevs)
-!     DO col=1, nCols
-!        IF (.NOT. data(col)%active) CYCLE  !# skip this column if dry
-!        CALL aed_calculate_particles(all_cols(:,col), col, nLevs)
-!     ENDDO
-!  ENDIF
+   IF (do_particle_bgc) THEN
+   !  print *,'Particle BGC', call_count, nLevs
+      CALL Particles(nLevs)
+      DO col=1, nCols
+         IF (.NOT. data(col)%active) CYCLE  !# skip this column if dry
+         CALL aed_calculate_particles(all_cols(:,col), col, nLevs)
+      ENDDO
+   ENDIF
 
 !-------------------------------------------------------------------------------
 CONTAINS
@@ -1646,7 +1646,7 @@ CONTAINS
       AED_REAL,INTENT(out) :: cc_diag(:,:)
    !
    !LOCALS
-      INTEGER :: col, zon
+      INTEGER :: zon
    !
    !----------------------------------------------------------------------------
    !BEGIN
