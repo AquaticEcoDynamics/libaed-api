@@ -47,7 +47,7 @@ MODULE aed_ptm
 
    PRIVATE ! By default, make everything private
 
-   PUBLIC aed_part_group_t, aed_ptm_init, ptm_istat, ptm_env, Particles, aed_calculate_particles
+   PUBLIC aed_part_group_t, aed_ptm_init, ptm_istat, ptm_env, Particles, aed_calculate_particles, set_ptm_aed_var_num
 
 
    !#--------------------------------------------------------------------------#
@@ -102,6 +102,7 @@ MODULE aed_ptm
    INTEGER, PARAMETER :: n_ptm_env   = 5
    INTEGER            :: n_ptm_vars  = 0
    INTEGER            :: aed_n_particles
+   INTEGER            :: n_aed_vars_
 
    !# Particle groups
 !   INTEGER :: num_groups
@@ -127,12 +128,12 @@ SUBROUTINE aed_ptm_init(ng,np,parts,n_ptm_vars_,n_cells)
    INTEGER,  INTENT(in) :: n_ptm_vars_, n_cells
    TYPE(aed_part_group_t),DIMENSION(:),TARGET,INTENT(in) :: parts
 !LOCALS
-   INTEGER :: rc
+   TYPE(aed_variable_t),POINTER :: tvar
+   TYPE(aed_ptm_t), DIMENSION(:), ALLOCATABLE :: ptm
+   INTEGER :: rc, pv, av, grp, prt, ppid
 !
 !-------------------------------------------------------------------------------
 !BEGIN
-
-   print *,'sss',ng,np
    aed_n_groups = ng
    aed_n_particles = np
 
@@ -145,35 +146,70 @@ SUBROUTINE aed_ptm_init(ng,np,parts,n_ptm_vars_,n_cells)
    ! Allocating AED PTM arrays : status, environment, state and diagnostic
    ALLOCATE(ptm_istat(aed_n_groups,1:aed_n_particles,1:n_ptm_istat),stat=rc)
      IF (rc /= 0) STOP 'allocate_memory(): ERROR allocating (ptm_istat)'
-   ALLOCATE(ptm_env(aed_n_groups,1:aed_n_particles,1:n_ptm_env),stat=rc)
+   ALLOCATE(ptm_env(aed_n_groups,1:aed_n_particles,1:n_ptm_env+n_ptm_vars),stat=rc)
      IF (rc /= 0) STOP 'allocate_memory(): ERROR allocating (ptm_env)'
    ALLOCATE(ptm_state(aed_n_groups,1:aed_n_particles,1:n_ptm_vars),stat=rc)
      IF (rc /= 0) STOP 'allocate_memory(): ERROR allocating (ptm_state)'
    ALLOCATE(ptm_diag(aed_n_groups,1:aed_n_particles,1:n_ptm_vars),stat=rc) ! Not yet used
      IF (rc /= 0) STOP 'allocate_memory(): ERROR allocating (ptm_diag)'
 
+
+   !----------------------------------------------------------------------------
+   !# Now set initial values
    ptm_istat(:,:,:) = -9999
    ptm_env(:,:,:)   = -9999.
    ptm_state(:,:,:) = -9999.
    ptm_diag(:,:,:)  = -9999.
 
-    !TESTS
-    ptm_istat(1,5000,1) = 42
-    ptm_istat(1,1,1) = 101
-    ptm_istat(1,1,2) = 102
-    ptm_istat(1,1,3) = 103
-    ptm_istat(1,1,4) = 104
+   pv = 0;
+   DO av=1,n_aed_vars_
+      IF ( .NOT.  aed_get_var(av, tvar) ) STOP "     ERROR getting variable info"
+      IF ( tvar%var_type == V_PARTICLE ) THEN  !# ptm variable
+          pv = pv + 1 
 
-    ptm_istat(1,2,1) = 201
-    ptm_istat(1,2,2) = 202
-    ptm_istat(1,2,3) = 203
-    ptm_istat(1,2,4) = 204
-
-    ptm_env(1,3,3) = 1.33
-    ptm_env(1,1,1) = 111.1
+         !print *,'PTM',pv,n_ptm_env,tvar%initial 
+          ptm_state(:,:,pv) = tvar%initial ! Note this is all particles, regardless of status (ptm_env(:,:,n_ptm_env+1:n_ptm_env+n_ptm_vars))
+          ptm_env(:,:,n_ptm_env+pv) = tvar%initial 
+      ENDIF
+   ENDDO
 
 
-   !print*,"allocating all_parts with ", ubound(temp,1), " cells"
+   ALLOCATE(ptm(aed_n_particles*aed_n_groups))
+
+   DO grp=1,aed_n_groups
+     DO prt=1,aed_n_particles
+         ! Point single particle object to the global particle data structure
+         ptm(prt)%ptm_istat => ptm_istat(grp,prt,:)
+         ptm(prt)%ptm_env   => ptm_env(grp,prt,1:n_ptm_env)
+         ptm(prt)%ptm_state => ptm_env(grp,prt,n_ptm_env+1:n_ptm_vars)    !ptm_state(grp,prt,:) 
+         ptm(prt)%ptm_diag  => ptm_diag(grp,prt,:)
+     ENDDO 
+   ENDDO !end particle loop
+
+   ppid = aed_n_particles*aed_n_groups
+
+   CALL aed_initialize_particle(ppid,ptm) 
+   DEALLOCATE(ptm)
+
+
+
+   ! !TESTS
+   ! ptm_istat(1,5000,1) = 42
+   ! ptm_istat(1,1,1) = 101
+   ! ptm_istat(1,1,2) = 102
+   ! ptm_istat(1,1,3) = 103
+   ! ptm_istat(1,1,4) = 104
+   !
+   ! ptm_istat(1,2,1) = 201
+   ! ptm_istat(1,2,2) = 202
+   ! ptm_istat(1,2,3) = 203
+   ! ptm_istat(1,2,4) = 204
+   !
+   ! ptm_env(1,3,3) = 1.33
+   ! ptm_env(1,1,1) = 111.1
+   !
+   !
+   !!print*,"allocating all_parts with ", ubound(temp,1), " cells"
    ALLOCATE(all_particles(n_cells))   
 
 
@@ -223,7 +259,7 @@ SUBROUTINE Particles(n_cells)
 
          ! First, loop through all particles, and count how mnay are in each cell
          DO prt=1,aed_n_particles
-           IF (prt<30) print *,'STAT', prt,ptm_istat(grp,prt,STAT),ptm_istat(grp,prt,IDX3) 
+           !IF (prt<30) print *,'STAT', prt,ptm_istat(grp,prt,STAT),ptm_istat(grp,prt,IDX3) 
             IF ( ptm_istat(grp,prt,STAT) >= 0 ) THEN
                cell = ptm_istat(grp,prt,IDX3)
                IF ( cell >= 1 .AND. cell <= size(all_particles) ) THEN
@@ -300,7 +336,7 @@ SUBROUTINE aed_calculate_particles(icolm, col, nlev)
    INTEGER :: ppid
    AED_REAL :: dt = 3600
 
-   TYPE (aed_ptm_t) :: ptm
+   TYPE (aed_ptm_t), DIMENSION(:), ALLOCATABLE :: ptm
 
    TYPE(partgroup_cell), POINTER :: layer_particles
 !
@@ -318,6 +354,8 @@ SUBROUTINE aed_calculate_particles(icolm, col, nlev)
       !print *, "ptm", lev, layer_particles%count
       IF (layer_particles%count == 0) CYCLE
 
+      ALLOCATE(ptm(layer_particles%count))
+
       ppid = 0          ! new cell identifier, to allow cumulation of prts
       DO pt=1,layer_particles%count
 
@@ -327,20 +365,23 @@ SUBROUTINE aed_calculate_particles(icolm, col, nlev)
          !print *, "ppp", lev, pt, grp, prt
 
          ! Point single particle object to the global particle data structure
-         ptm%ptm_istat => ptm_istat(grp,prt,:)
-         ptm%ptm_env   => ptm_env(grp,prt,1:n_ptm_env)
-         ptm%ptm_state => ptm_env(grp,prt,n_ptm_env+1:n_ptm_vars)    !ptm_state(grp,prt,:) 
-         ptm%ptm_diag  => ptm_diag(grp,prt,:)
+         ptm(pt)%ptm_istat => ptm_istat(grp,prt,:)
+         ptm(pt)%ptm_env   => ptm_env(grp,prt,1:n_ptm_env)
+         ptm(pt)%ptm_state => ptm_env(grp,prt,n_ptm_env+1:n_ptm_vars)    !ptm_state(grp,prt,:) 
+         ptm(pt)%ptm_diag  => ptm_diag(grp,prt,:)
 
          !print *,'ptm_istat(grp,prt,STAT)',ptm_istat(grp,prt,STAT), ptm%ptm_istat
+      ENDDO !end particle loop
+      ppid = layer_particles%count          
+      
+      ! Pass through the particle to AED modules, if its active
+      !IF ( ptm_istat(grp,prt,STAT) >= 0 ) THEN
+         CALL aed_particle_bgc(icolm,lev,ppid,p=ptm) ! Note: ppid getting incremeted in here
+      !ENDIF
+      DEALLOCATE(ptm)
 
-         ! Pass through the particle to AED modules, if its active
-         IF ( ptm_istat(grp,prt,STAT) >= 0 ) THEN
-            CALL aed_particle_bgc(icolm,lev,ppid,p=ptm) ! Note: ppid getting incremeted in here
-         ENDIF
+   ENDDO !end layer loop
 
-      ENDDO
-   ENDDO
 END SUBROUTINE aed_calculate_particles
 !+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 
@@ -438,6 +479,23 @@ SUBROUTINE Particles_zz(column, count, parts)
 END SUBROUTINE Particles_zz
 !+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 
+
+!###############################################################################
+SUBROUTINE set_ptm_aed_var_num(n_aed_vars)
+!-------------------------------------------------------------------------------
+!ARGUMENTS
+   INTEGER, INTENT(in) :: n_aed_vars
+!
+!LOCALS
+  !INTEGER n_aed_vars_
+!
+!-------------------------------------------------------------------------------
+!BEGIN
+
+  n_aed_vars_ = n_aed_vars
+
+END SUBROUTINE set_ptm_aed_var_num
+!+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 
 END MODULE aed_ptm
 

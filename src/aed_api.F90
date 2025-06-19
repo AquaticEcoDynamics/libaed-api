@@ -62,7 +62,7 @@ MODULE aed_api
    USE aed_util
    USE aed_common
    USE aed_zones
-   USE aed_ptm, ONLY : Particles, aed_calculate_particles
+   USE aed_ptm, ONLY : Particles, aed_calculate_particles, set_ptm_aed_var_num
 
    IMPLICIT NONE
 
@@ -754,7 +754,7 @@ SUBROUTINE aed_set_model_data(dat, ncols, nlevs)
    TYPE(aed_data_t),INTENT(in) :: dat(ncols)
 !
 !LOCALS
-   INTEGER :: av, v, sv, status, col, zon
+   INTEGER :: av, v, sv, pv, status, col, zon
    TYPE(aed_variable_t),POINTER :: tvar
 !
 !-------------------------------------------------------------------------------
@@ -796,7 +796,7 @@ SUBROUTINE aed_set_model_data(dat, ncols, nlevs)
 
    !----------------------------------------------------------------------------
    !# Now set initial values
-   v = 0 ; sv = 0;
+   v = 0 ; sv = 0; pv = 0;
    DO av=1,n_aed_vars
       IF ( .NOT.  aed_get_var(av, tvar) ) STOP "     ERROR getting variable info"
       IF ( tvar%var_type == V_STATE ) THEN  !# state variable
@@ -813,6 +813,7 @@ SUBROUTINE aed_set_model_data(dat, ncols, nlevs)
          ENDIF
       ENDIF
    ENDDO
+   CALL set_ptm_aed_var_num(n_aed_vars)
 
    !# Allocate array with vertical movement rates (m/s, positive for upwards),
    !# and set these to the values provided by the model.
