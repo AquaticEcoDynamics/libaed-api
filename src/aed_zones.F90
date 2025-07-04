@@ -54,6 +54,7 @@ MODULE aed_zones
    TYPE :: api_zone_env_t
       AED_REAL :: z_height
       AED_REAL :: z_dz
+      AED_REAL :: z_col_area
       AED_REAL :: z_area
       AED_REAL :: z_depth
       AED_REAL :: z_col_depth

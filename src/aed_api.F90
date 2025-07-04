@@ -986,6 +986,7 @@ SUBROUTINE aed_set_model_env(env, ncols, nlevs)
 
    IF (BSSOCIATED(col_depth))      tv=aed_provide_sheet_global('col_depth',     'column water depth',    'm above bottom')
    IF (BSSOCIATED(depth))          tv=aed_provide_global      ('depth',         'depth',                 'm'       )
+   IF (BSSOCIATED(col_area))       tv=aed_provide_sheet_global('col_area',      'column area',           'm2'      )
    IF (BSSOCIATED(area))           tv=aed_provide_global      ('layer_area',    'layer area',            'm2'      )
    IF (BSSOCIATED(dz))             tv=aed_provide_global      ('layer_ht',      'layer heights',         'm'       )
 
@@ -1026,7 +1027,7 @@ SUBROUTINE aed_set_model_env(env, ncols, nlevs)
 
    !# env vars currently not made available
     !active
-    !col_area
+    !col_height
     !height
     !ustar_bed
     !wv_uorb
@@ -1034,7 +1035,6 @@ SUBROUTINE aed_set_model_env(env, ncols, nlevs)
     !dz_benthic
     !bathy
     !datum
-    !col_height
 
 END SUBROUTINE aed_set_model_env
 !+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
@@ -1081,6 +1081,7 @@ SUBROUTINE aed_check_model_setup
 
             CASE ( 'col_depth' )   ; tvar%found = BSSOCIATED(col_depth)
             CASE ( 'depth' )       ; tvar%found = BSSOCIATED(depth)
+            CASE ( 'col_area' )    ; tvar%found = BSSOCIATED(col_area)
             CASE ( 'layer_area' )  ; tvar%found = BSSOCIATED(area)
             CASE ( 'layer_ht' )    ; tvar%found = BSSOCIATED(dz)
 
@@ -1191,6 +1192,7 @@ SUBROUTINE define_column(icolm, col)
 
             CASE ( 'col_depth' )   ; icolm(av)%cell_sheet => data(col)%col_depth
             CASE ( 'depth' )       ; icolm(av)%cell => data(col)%depth
+            CASE ( 'col_area' )    ; icolm(av)%cell_sheet => data(col)%col_area
             CASE ( 'layer_area' )  ; icolm(av)%cell => data(col)%area
             CASE ( 'layer_ht' )    ; icolm(av)%cell => data(col)%dz
 
@@ -1307,6 +1309,7 @@ SUBROUTINE define_zone_column(zcolm, zon)
 
             CASE ( 'col_depth' )   ; zcolm(av)%cell_sheet => aedZones(zon)%z_env%z_col_depth
             CASE ( 'depth' )       ; zcolm(av)%cell => aedZones(:)%z_env%z_depth
+            CASE ( 'col_area' )    ; zcolm(av)%cell_sheet => aedZones(zon)%z_env%z_col_area
             CASE ( 'layer_area' )  ; zcolm(av)%cell => aedZones(:)%z_env%z_area
             CASE ( 'layer_ht' )    ; zcolm(av)%cell => aedZones(:)%z_env%z_dz
 
