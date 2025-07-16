@@ -471,7 +471,7 @@ SUBROUTINE Particles_zz(column, count, parts)
 
             IF (NU > 0) particle_groups(grp)%vars(1, prt) = zz(15)
             IF (NU > 1) particle_groups(grp)%vars(2, prt) = zz(16)
-            particle_groups(grp)%status(stat, prt) = zz(19)
+            particle_groups(grp)%status(stat, prt) = INT(zz(19))
          ENDIF
          particle_groups(grp)%age(2,prt) = particle_groups(grp)%age(2,prt) + dt
       ENDDO

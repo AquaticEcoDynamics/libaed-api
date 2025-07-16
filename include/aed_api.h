@@ -38,29 +38,20 @@
 #include "aed.h"
 #include "aed_api_env.h"
 
-#define AED_API_VERSION  0.9.3"
+#define AED_API_VERSION  0.9.4"
 
 #ifndef AED_REAL
 #  define AED_REAL REAL(kind=C_DOUBLE)
 #endif
-! #define CAED_REAL REAL(kind=C_DOUBLE)
-! #define NF90_REALTYPE NF90_DOUBLE
-! #define NC_FILLER NC_FILL_DOUBLE
-! #define IFIX IDINT
-! #define AMOD DMOD
-! #define ALOG10 DLOG10
-! #define EXP DEXP
-! #define AINT DINT
-! #define FLOAT
+
+#ifndef FLOAT
+#define FLOAT(x) (x)
+#endif
+
 #define DOUBLETYPE double precision
 #define CINTEGER INTEGER(kind=C_INT32_T)
 #define CSIZET   INTEGER(kind=C_SIZE_T)
 #define CLOGICAL LOGICAL(kind=C_BOOL)
 #define CCHARACTER CHARACTER(C_CHAR)
-
-#ifndef isnan
-#  define isnan(x) ieee_is_nan(x)
-#  define HAVE_IEEE_ARITH
-#endif
 
 #endif

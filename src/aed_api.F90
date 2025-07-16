@@ -40,20 +40,6 @@
 
 #include "aed_api.h"
 
-#ifndef __GFORTRAN__
-#  ifndef isnan
-#    define isnan(x) ieee_is_nan(x)
-#  endif
-#endif
-
-!# Temporary HOST specific flags
-!# Ultimately these will go - the code should be sufficiently generic
-!# to handle all cases, but while merging is happening we probably need them
-#define GLM_VARIANT   1
-#define TFV_VARIANT   2
-#define SCH_VARIANT   3
-#define ELC_VARIANT   4
-
 !-------------------------------------------------------------------------------
 MODULE aed_api
 !
@@ -235,7 +221,6 @@ MODULE aed_api
       AED_REAL,DIMENSION(:),  POINTER :: cc_diag_hz     => null()  !# (n_diag_ben_vars)
 
       !# Column index, location and status
-      AED_REAL,POINTER                :: yearday        => null()
       AED_REAL,POINTER                :: longitude      => null()
       AED_REAL,POINTER                :: latitude       => null()
       AED_REAL                        :: col_num
@@ -761,16 +746,20 @@ SUBROUTINE aed_set_model_data(dat, ncols, nlevs)
 !BEGIN
    IF (nlevs > MaxLayers) MaxLayers = nlevs
 
-   IF (.NOT. ALLOCATED(all_cols) ) THEN
+   IF ( .NOT. ALLOCATED(all_cols) ) THEN
       ALLOCATE(all_cols(n_aed_vars, ncols),stat=status)
       IF (status /= 0) STOP 'allocate_memory(): Error allocating "all_cols"'
    ENDIF
-   IF (.NOT. ALLOCATED(zon_cols) ) THEN
-      ALLOCATE(zon_cols(n_aed_vars, aed_n_zones),stat=status)
-      IF (status /= 0) STOP 'allocate_memory(): Error allocating "zon_cols"'
+   IF ( .NOT. ALLOCATED(zon_cols) ) THEN
+      IF (aed_n_zones > 0) THEN
+         ALLOCATE(zon_cols(n_aed_vars, aed_n_zones),stat=status)
+         IF (status /= 0) STOP 'allocate_memory(): Error allocating "zon_cols"'
+      ENDIF
    ENDIF
 
-   IF (.NOT.ALLOCATED(flux_zon))     ALLOCATE(flux_zon(n_aed_vars, aed_n_zones))
+   IF ( aed_n_zones > 0 ) THEN
+      IF (.NOT.ALLOCATED(flux_zon))  ALLOCATE(flux_zon(n_aed_vars, aed_n_zones))
+   ENDIF
    IF (.NOT.ALLOCATED(flux_ben))     ALLOCATE(flux_ben(n_aed_vars))
    IF (.NOT.ALLOCATED(flux_atm))     ALLOCATE(flux_atm(n_aed_vars))
    IF (.NOT.ALLOCATED(flux_rip))     ALLOCATE(flux_rip(n_aed_vars))
@@ -892,7 +881,6 @@ SUBROUTINE aed_set_model_env(env, ncols, nlevs)
       data(col)%bot_idx      => env(col)%bot_idx
       data(col)%top_idx      => env(col)%top_idx
 
-      data(col)%yearday      => env(col)%yearday
       data(col)%longitude    => env(col)%longitude
       data(col)%latitude     => env(col)%latitude
       data(col)%col_num      =  FLOAT(col)  !  => env(col)%col_num
@@ -1068,7 +1056,6 @@ SUBROUTINE aed_check_model_setup
             CASE ( 'longitude' )   ; tvar%found = BSSOCIATED(longitude)
             CASE ( 'latitude' )    ; tvar%found = BSSOCIATED(latitude)
             CASE ( 'col_num' )     ; tvar%found = .TRUE.
-           !CASE ( 'col_num' )     ; tvar%found = BSSOCIATED(col_num)
 
             CASE ( 'longwave' )    ; tvar%found = BSSOCIATED(longwave)
             CASE ( 'air_temp' )    ; tvar%found = BSSOCIATED(air_temp)
@@ -1176,7 +1163,8 @@ SUBROUTINE define_column(icolm, col)
          ev = ev + 1
          SELECT CASE (tvar%name)
             CASE ( 'timestep' )    ; icolm(av)%cell_sheet => timestep
-            CASE ( 'yearday' )     ; icolm(av)%cell_sheet => data(col)%yearday   !yearday
+            CASE ( 'yearday' )     ; icolm(av)%cell_sheet => yearday
+
             CASE ( 'longitude' )   ; icolm(av)%cell_sheet => data(col)%longitude
             CASE ( 'latitude' )    ; icolm(av)%cell_sheet => data(col)%latitude
             CASE ( 'col_num' )     ; icolm(av)%cell_sheet => data(col)%col_num
@@ -1405,12 +1393,12 @@ SUBROUTINE check_states(icolm, col, wlev)
                v = v + 1
                IF ( repair_state ) THEN
 #if DEBUG
-                  IF ( isnan(data(col)%cc(v,lev)) ) last_naned = i
+                  IF ( ieee_is_nan(data(col)%cc(v,lev)) ) last_naned = i
 #endif
-                  IF ( .NOT. isnan(min_(v)) ) THEN
+                  IF ( .NOT. ieee_is_nan(min_(v)) ) THEN
                      IF ( data(col)%cc(v, lev) < min_(v) ) data(col)%cc(v, lev) = min_(v)
                   ENDIF
-                  IF ( .NOT. isnan(max_(v)) ) THEN
+                  IF ( .NOT. ieee_is_nan(max_(v)) ) THEN
                      IF ( data(col)%cc(v, lev) > max_(v) ) data(col)%cc(v, lev) = max_(v)
                   ENDIF
                ENDIF
@@ -1455,18 +1443,16 @@ SUBROUTINE aed_run_model(nCols, nLevs, doSurface)
    !----------------------------------------------------------------------------
    !# Resetting and re-initialisation tasks
    DO col=1, nCols
-      data(col)%cc_diag = 0.
-      data(col)%cc_diag_hz = 0.
-
       IF (.NOT. data(col)%active) CYCLE  !# skip this column if dry
 
       top = data(col)%top_idx
       bot = data(col)%bot_idx
       IF ( bot > top ) THEN ; dir = -1 ; ELSE ; dir = 1 ; ENDIF
 
-      IF ( .NOT. reinited ) THEN
-         CALL re_initialize(all_cols(:,col), nLevs)
-      ENDIF
+      IF ( .NOT. reinited ) CALL re_initialize(all_cols(:,col), nLevs)
+
+      data(col)%cc_diag = 0.
+      data(col)%cc_diag_hz = 0.
 
       !-------------------------------------------------------------------------
       !# Pre flux integration tasks
@@ -1475,7 +1461,6 @@ SUBROUTINE aed_run_model(nCols, nLevs, doSurface)
       !-------------------------------------------------------------------------
       !# Main time-step tasks
       CALL aed_run_column(all_cols(:,col), col, nLevs, doSurface)
-
    ENDDO
 
    !----------------------------------------------------------------------------
@@ -1491,72 +1476,6 @@ SUBROUTINE aed_run_model(nCols, nLevs, doSurface)
 
 !-------------------------------------------------------------------------------
 CONTAINS
-
-
-   !############################################################################
-   SUBROUTINE aed_run_column(icolm, col, nlev, doSurface)
-   !----------------------------------------------------------------------------
-   !ARGUMENTS
-      TYPE(aed_column_t),INTENT(inout) :: icolm(:)
-      INTEGER,INTENT(in) :: col, nlev
-      LOGICAL,INTENT(in) :: doSurface
-   !
-   !LOCALS
-      INTEGER  :: v, lev, zon, split
-   !
-   !----------------------------------------------------------------------------
-   !BEGIN
-      DO split=1,split_factor
-         IF (benthic_mode .GT. 1) THEN
-            CALL p_calc_zone_areas(aedZones, aed_n_zones, data(col)%area, data(col)%lheights, nlev)
-            CALL p_copy_to_zone(aedZones, aed_n_zones, data(col)%lheights, data(col)%cc,  &
-                                 data(col)%cc_hz, data(col)%cc_diag, data(col)%cc_diag_hz, nlev)
-         ENDIF
-
-         !# Update local light field (self-shading may have changed through
-         !# changes in biological state variables). Update_light is set to
-         !# be inline with current aed_phyoplankton, which requires only
-         !# surface par, then integrates over depth of a layer
-         CALL update_light(icolm, col, nlev)
-
-         ! non PAR bandwidth fractions (set assuming single light extinction)
-         data(col)%nir(:) = (data(col)%par(:)/par_fraction) * nir_fraction
-         data(col)%uva(:) = (data(col)%par(:)/par_fraction) * uva_fraction
-         data(col)%uvb(:) = (data(col)%par(:)/par_fraction) * uvb_fraction
-
-         !# Time-integrate one biological time step
-         CALL calculate_fluxes(icolm, col, nlev, doSurface)
-
-         !# Update the water column layers
-         DO v = 1, n_vars
-            DO lev = bot, top
-               data(col)%cc(v, lev) = data(col)%cc(v, lev) + dt_eff*flux_pel(v, lev)
-            ENDDO
-         ENDDO
-
-         !# Now update benthic variables, depending on whether zones are simulated
-         IF ( benthic_mode .GT. 1 ) THEN
-            ! Loop through benthic state variables to update their mass
-            DO v = 1, n_vars_ben
-               ! Loop through each sediment zone
-               DO zon = 1, aed_n_zones
-                  aedZones(zon)%z_cc_hz(v) = aedZones(zon)%z_cc_hz(v) + dt_eff*flux_zon(v, zon)
-               ENDDO
-            ENDDO
-
-            !# Distribute cc-sed benthic properties back into main cc array
-            CALL p_copy_from_zone(aedZones, aed_n_zones, data(col)%lheights, data(col)%cc,  &
-                                 data(col)%cc_hz, data(col)%cc_diag, data(col)%cc_diag_hz, nlev)
-         ELSE
-            DO v = 1, n_vars_ben
-               data(col)%cc_hz(v) = data(col)%cc_hz(v) + dt_eff*flux_ben(v)
-            ENDDO
-         ENDIF
-
-         CALL check_states(icolm, col, nlev)
-      ENDDO
-   END SUBROUTINE aed_run_column
-   !++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 
 
    !############################################################################
@@ -1607,7 +1526,7 @@ CONTAINS
                   IF ( .NOT. tv%sheet .AND. tv%var_type == V_STATE ) THEN
                      v = v + 1
                      !# only for state_vars that are not sheet, and also non-zero ws
-                     IF ( .NOT. isnan(tv%mobility) .AND. SUM(ABS(ws(i,:)))>zero_ ) THEN
+                     IF ( .NOT. ieee_is_nan(tv%mobility) .AND. SUM(ABS(ws(i,:)))>zero_ ) THEN
                         min_C = tv%minimum
                         CALL doMobility(nlev, timestep, data(col)%dz, data(col)%area, ws(i,:), min_C, data(col)%cc(v, :))
                      ENDIF
@@ -1619,11 +1538,12 @@ CONTAINS
 
       CALL check_states(icolm, col, nlev)
 
-      IF (benthic_mode .GT. 1) THEN
-         CALL p_calc_zone_areas(aedZones, aed_n_zones, data(col)%area, data(col)%lheights, nlev)
-         CALL p_copy_to_zone(aedZones, aed_n_zones, data(col)%lheights, data(col)%cc,  &
-                                 data(col)%cc_hz, data(col)%cc_diag, data(col)%cc_diag_hz, nlev)
-      ENDIF
+!$ done in runcolumn
+!     IF (benthic_mode .GT. 1) THEN
+!        CALL p_calc_zone_areas(aedZones, aed_n_zones, data(col)%area, data(col)%lheights, nlev)
+!        CALL p_copy_to_zone(aedZones, aed_n_zones, data(col)%lheights, data(col)%cc,  &
+!                                data(col)%cc_hz, data(col)%cc_diag, data(col)%cc_diag_hz, nlev)
+!     ENDIF
 
       !# Update local light field (self-shading may have changed through
       !# changes in biological state variables). Update_light is set to
@@ -1631,13 +1551,79 @@ CONTAINS
       !# surface par, then integrates over depth of a layer
 
       !# populate local light/extc arrays one column at a time
-      IF (.NOT. link_ext_par) CALL update_light(icolm, col, nlev)
+!# done in run col
+!     IF (.NOT. link_ext_par) CALL update_light(icolm, col, nlev)
 
-      ! non PAR bandwidth fractions (set assuming single light extinction)
-      data(col)%nir = (data(col)%par/par_fraction) * nir_fraction
-      data(col)%uva = (data(col)%par/par_fraction) * uva_fraction
-      data(col)%uvb = (data(col)%par/par_fraction) * uvb_fraction
+!     ! non PAR bandwidth fractions (set assuming single light extinction)
+!     data(col)%nir = (data(col)%par/par_fraction) * nir_fraction
+!     data(col)%uva = (data(col)%par/par_fraction) * uva_fraction
+!     data(col)%uvb = (data(col)%par/par_fraction) * uvb_fraction
    END SUBROUTINE pre_kinetics
+   !++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+
+   !############################################################################
+   SUBROUTINE aed_run_column(icolm, col, nlev, doSurface)
+   !----------------------------------------------------------------------------
+   !ARGUMENTS
+      TYPE(aed_column_t),INTENT(inout) :: icolm(:)
+      INTEGER,INTENT(in) :: col, nlev
+      LOGICAL,INTENT(in) :: doSurface
+   !
+   !LOCALS
+      INTEGER  :: v, lev, zon, split
+   !
+   !----------------------------------------------------------------------------
+   !BEGIN
+      DO split=1,split_factor
+         IF (benthic_mode .GT. 1) THEN
+            CALL p_calc_zone_areas(aedZones, aed_n_zones, data(col)%area, data(col)%lheights, nlev)
+            CALL p_copy_to_zone(aedZones, aed_n_zones, data(col)%lheights, data(col)%cc,  &
+                                 data(col)%cc_hz, data(col)%cc_diag, data(col)%cc_diag_hz, nlev)
+         ENDIF
+
+         !# Update local light field (self-shading may have changed through
+         !# changes in biological state variables). Update_light is set to
+         !# be inline with current aed_phyoplankton, which requires only
+         !# surface par, then integrates over depth of a layer
+         CALL update_light(icolm, col, nlev)
+
+         ! non PAR bandwidth fractions (set assuming single light extinction)
+         data(col)%nir(:) = (data(col)%par(:)/par_fraction) * nir_fraction
+         data(col)%uvb(:) = (data(col)%par(:)/par_fraction) * uvb_fraction
+
+         !# Time-integrate one biological time step
+         CALL calculate_fluxes(icolm, col, nlev, doSurface)
+
+         !# Update the water column layers
+         DO v = 1, n_vars
+            DO lev = bot, top
+               data(col)%cc(v, lev) = data(col)%cc(v, lev) + dt_eff*flux_pel(v, lev)
+            ENDDO
+         ENDDO
+
+         !# Now update benthic variables, depending on whether zones are simulated
+         IF ( benthic_mode .GT. 1 ) THEN
+            ! Loop through benthic state variables to update their mass
+            DO v = 1, n_vars_ben
+               ! Loop through each sediment zone
+               DO zon = 1, aed_n_zones
+                  aedZones(zon)%z_cc_hz(v) = aedZones(zon)%z_cc_hz(v) + dt_eff*flux_zon(n_vars+v, zon)
+               ENDDO
+            ENDDO
+
+            !# Distribute cc-sed benthic properties back into main cc array
+            CALL p_copy_from_zone(aedZones, aed_n_zones, data(col)%lheights, data(col)%cc,  &
+                                 data(col)%cc_hz, data(col)%cc_diag, data(col)%cc_diag_hz, nlev)
+         ELSE
+            DO v = 1, n_vars_ben
+               data(col)%cc_hz(v) = data(col)%cc_hz(v) + dt_eff*flux_ben(n_vars+v)
+            ENDDO
+         ENDIF
+
+         CALL check_states(icolm, col, nlev)
+      ENDDO
+   END SUBROUTINE aed_run_column
    !++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 
 
@@ -1723,14 +1709,15 @@ CONTAINS
    !# assumes only GLM does the odd zoning stuff
         IF ( do_zone_averaging ) THEN
            CALL aed_initialize_zone_benthic(nCols, nlev, n_aed_vars, data(col)%cc_diag)
-           DO zon=1, aed_n_zones
-              aedZones(zon)%z_cc_diag(:, zon)  = zero_
+!# done in aed_initialize_zone_benthic
+!          DO zon=1, aed_n_zones
+!             aedZones(zon)%z_cc_diag(:, zon)  = zero_
 
-              CALL aed_initialize_benthic(zon_cols(:,zon), 1)
-           ENDDO
+!             CALL aed_initialize_benthic(zon_cols(:,zon), 1)
+!          ENDDO
 
-           CALL p_copy_from_zone(aedZones, aed_n_zones, data(col)%lheights, data(col)%cc,  &
-                        data(col)%cc_hz, data(col)%cc_diag, data(col)%cc_diag_hz, nlev)
+!          CALL p_copy_from_zone(aedZones, aed_n_zones, data(col)%lheights, data(col)%cc,  &
+!                       data(col)%cc_hz, data(col)%cc_diag, data(col)%cc_diag_hz, nlev)
         ELSE
            CALL aed_initialize_benthic(icolm, 1)
         ENDIF
@@ -1787,7 +1774,7 @@ CONTAINS
                   ELSEIF ( tvar%var_type == V_STATE ) THEN !# State variable
                      sv = sv + 1
                      IF ( tvar%bot ) THEN
-                        column_sed(av)%cell_sheet => aedZones(zon)%z_cc(n_vars+sv, bot)
+                        column_sed(av)%cell_sheet => aedZones(zon)%z_cc_hz(sv)
                      ENDIF
                   ENDIF
                ENDIF
@@ -1814,8 +1801,8 @@ CONTAINS
 
             IF ( benthic_mode .EQ. 3 ) THEN
                !# Zone is able to operated on by riparian and dry methods
-               CALL aed_calculate_riparian(column_sed, zlev, aedZones(zon)%z_env%z_pc_wet) ! CAB???
-               IF (aedZones(zon)%z_env%z_pc_wet < 0.01 ) CALL aed_calculate_dry(column_sed, zlev) !CAB ???
+               CALL aed_calculate_riparian(column_sed, zlev, aedZones(zon)%z_env%z_pc_wet)
+               IF (aedZones(zon)%z_env%z_pc_wet < 0.01 ) CALL aed_calculate_dry(column_sed, zlev)
 
                !# update feedback arrays to host model, to reduce rain (or if -ve then add flow)
                CALL aed_rain_loss(icolm, bot, localrainl);
@@ -1857,7 +1844,7 @@ CONTAINS
                IF (lev .GT. 1) THEN
                   splitZone = data(col)%lheights(lev-1) < aedZones(zon-1)%z_env%z_height
                ELSE
-                  splitZone = 0.0 < aedZones(zon-1)%z_env%z_height ! CAB???
+                  splitZone = 0.0 < aedZones(zon-1)%z_env%z_height
                ENDIF
             ELSE
                splitZone = .FALSE.
@@ -1953,7 +1940,7 @@ CONTAINS
       flux_pel = zero_
       flux_atm = zero_
       flux_ben = zero_
-      flux_zon = zero_
+      IF ( aed_n_zones > 0 ) flux_zon = zero_
 
       flux_pel_pre = zero_
       flux_pel_z = zero_
