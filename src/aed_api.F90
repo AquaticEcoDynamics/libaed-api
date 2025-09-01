@@ -1471,6 +1471,10 @@ CONTAINS
          ENDIF
       ENDIF
 
+      DO lev = 1, nlev
+         CALL aed_equilibrate(icolm, lev)
+      ENDDO
+
       CALL check_states(col, nlev)
    END SUBROUTINE pre_kinetics
    !++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
@@ -1529,10 +1533,6 @@ CONTAINS
             data(col)%cc_hz(1:n_vars_ben) = &
                data(col)%cc_hz(1:n_vars_ben) + dt_eff*flux_ben(n_vars+1:n_vars+n_vars_ben)
          ENDIF
-
-         DO lev = 1, nlev
-            CALL aed_equilibrate(icolm, lev)
-         ENDDO
 
          CALL check_states(col, nlev)
       ENDDO
