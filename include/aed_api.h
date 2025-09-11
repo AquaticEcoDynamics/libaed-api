@@ -49,7 +49,7 @@
 #define FLOAT(x) (x)
 #endif
 
-#define CINTEGER INTEGER(kind=C_INT_T)
+#define CINTEGER INTEGER(kind=C_INT32_T)
 #define CSIZET   INTEGER(kind=C_SIZE_T)
 #define CCHARACTER CHARACTER(C_CHAR)
 #endif
