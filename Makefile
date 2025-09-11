@@ -9,7 +9,7 @@
 #                                                                             #
 #      http://aquatic.science.uwa.edu.au/                                     #
 #                                                                             #
-#  Copyright 2024 - 2025 - The University of Western Australia                #
+#  Copyright 2024-2025 - The University of Western Australia                  #
 #                                                                             #
 #   AED is free software: you can redistribute it and/or modify               #
 #   it under the terms of the GNU General Public License as published by      #
@@ -93,7 +93,7 @@ endif
 include ../libaed-water/make_rules.inc
 
 ${objdir}/aed_external.o: ../libaed-water/src/aed_external.F90
-	$(F90) $(FFLAGS) $(EXTFFLAGS) -D_FORTRAN_SOURCE_ $(OMPFLAG) -c $< -o $@
+	$(F90) $(FFLAGS) $(EXTFFLAGS) $(OMPFLAG) -c $< -o $@
 
 ${libdir}/${APILIB}.${so_ext}: ${libdir}/${APILIB}.a
 	$(F90) ${SHARED} -o $@.${SOVERS}.${VERS} ${OBJS} ${LDFLAGS} ${SOFLAGS}

@@ -1,37 +1,37 @@
-!!! This is probably never going to be used
+/*! This is probably never going to be used !*/
 
-!###############################################################################
-!#                                                                             #
-!# aed_api_env.h                                                               #
-!#                                                                             #
-!#  Developed by :                                                             #
-!#      AquaticEcoDynamics (AED) Group                                         #
-!#      School of Agriculture and Environment                                  #
-!#      The University of Western Australia                                    #
-!#                                                                             #
-!#      http://aquatic.science.uwa.edu.au/                                     #
-!#                                                                             #
-!#  Copyright 2024 - 2025 - The University of Western Australia                #
-!#                                                                             #
-!#   AED is free software: you can redistribute it and/or modify               #
-!#   it under the terms of the GNU General Public License as published by      #
-!#   the Free Software Foundation, either version 3 of the License, or         #
-!#   (at your option) any later version.                                       #
-!#                                                                             #
-!#   AED is distributed in the hope that it will be useful,                    #
-!#   but WITHOUT ANY WARRANTY; without even the implied warranty of            #
-!#   MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the             #
-!#   GNU General Public License for more details.                              #
-!#                                                                             #
-!#   You should have received a copy of the GNU General Public License         #
-!#   along with this program.  If not, see <http://www.gnu.org/licenses/>.     #
-!#                                                                             #
-!#                                                                             #
-!# NB - This is currently a "work-in-progress" do not rely on it's function    #
-!#      declarations/constants/whatever because it will almost certainly be    #
-!#      changed.                                                               #
-!#                                                                             #
-!###############################################################################
+/*#############################################################################*
+ #                                                                             #
+ # aed_api_env.h                                                               #
+ #                                                                             #
+ #  Developed by :                                                             #
+ #      AquaticEcoDynamics (AED) Group                                         #
+ #      School of Agriculture and Environment                                  #
+ #      The University of Western Australia                                    #
+ #                                                                             #
+ #      http://aquatic.science.uwa.edu.au/                                     #
+ #                                                                             #
+ #  Copyright 2024-2025 - The University of Western Australia                  #
+ #                                                                             #
+ #   AED is free software: you can redistribute it and/or modify               #
+ #   it under the terms of the GNU General Public License as published by      #
+ #   the Free Software Foundation, either version 3 of the License, or         #
+ #   (at your option) any later version.                                       #
+ #                                                                             #
+ #   AED is distributed in the hope that it will be useful,                    #
+ #   but WITHOUT ANY WARRANTY; without even the implied warranty of            #
+ #   MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the             #
+ #   GNU General Public License for more details.                              #
+ #                                                                             #
+ #   You should have received a copy of the GNU General Public License         #
+ #   along with this program.  If not, see <http://www.gnu.org/licenses/>.     #
+ #                                                                             #
+ #                                                                             #
+ # NB - This is currently a "work-in-progress" do not rely on it's function    #
+ #      declarations/constants/whatever because it will almost certainly be    #
+ #      changed.                                                               #
+ #                                                                             #
+ *#############################################################################*/
 #ifndef _AED_API_ENV_H_
 #define _AED_API_ENV_H_
 
@@ -109,9 +109,9 @@
       /* 'latitude'       'latitude'               'radians'        */
 #define A_E_LATITUDE   117
       /* 'nearest_active' 'nearest active'         '-'              */
-!#define A_E_NEAR_ACTV  118
+/* #define A_E_NEAR_ACTV  118 */
       /* 'nearest_depth'  'nearest depth'          'm'              */
-!#define A_E_NEAR_DEPTH 119
+/* #define A_E_NEAR_DEPTH 119 */
 
 /* 0D vars */
       /* 'yearday'        'yearday'                'day'            */
