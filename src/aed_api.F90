@@ -11,7 +11,7 @@
 !#                                                                             #
 !#     http://aquatic.science.uwa.edu.au/                                      #
 !#                                                                             #
-!# Copyright 2024 - 2025 - The University of Western Australia                 #
+!# Copyright 2024-2025 - The University of Western Australia                   #
 !#                                                                             #
 !#  This file is part of libaed (Library for Aquatic Eco Dynamics)             #
 !#                                                                             #
@@ -114,7 +114,7 @@ MODULE aed_api
    !* A structure to pass environment array pointers to AED     *!
    !*-----------------------------------------------------------*!
    TYPE aed_env_t
-      INTEGER                       :: n_layers
+      INTEGER                       :: n_layers       = 0
       INTEGER, POINTER              :: top_idx        => null()
       INTEGER, POINTER              :: bot_idx        => null()
 
@@ -887,8 +887,10 @@ SUBROUTINE aed_set_model_env(env, ncols, nlevs)
    !# Register module accesible environment variables to AED core variable list
    IF (ASSOCIATED(timestep))       tv=aed_provide_sheet_global('timestep',      'timestep',              'seconds' )
    IF (ASSOCIATED(yearday))        tv=aed_provide_sheet_global('yearday',       'yearday',               'day'     )
+
    IF (BSSOCIATED(longitude))      tv=aed_provide_sheet_global('longitude',     'longitude',             'radians' )
    IF (BSSOCIATED(latitude))       tv=aed_provide_sheet_global('latitude',      'latitude',              'radians' )
+
                                    tv=aed_provide_sheet_global('col_num',       'column number',         '-'       )
 
    IF (BSSOCIATED(longwave))       tv=aed_provide_sheet_global('longwave',      'longwave',              'W/m2'    )
@@ -978,11 +980,12 @@ SUBROUTINE aed_check_model_setup
       IF ( tvar%var_type == V_EXTERNAL ) THEN !# Environment (external/global) variable
          ev = ev + 1
          SELECT CASE (tvar%name)
-
             CASE ( 'timestep' )    ; tvar%found = ASSOCIATED(timestep)
             CASE ( 'yearday' )     ; tvar%found = ASSOCIATED(yearday)
+
             CASE ( 'longitude' )   ; tvar%found = BSSOCIATED(longitude)
             CASE ( 'latitude' )    ; tvar%found = BSSOCIATED(latitude)
+
             CASE ( 'col_num' )     ; tvar%found = .TRUE.
 
             CASE ( 'longwave' )    ; tvar%found = BSSOCIATED(longwave)
@@ -1095,6 +1098,7 @@ SUBROUTINE define_column(icolm, col)
 
             CASE ( 'longitude' )   ; icolm(av)%cell_sheet => data(col)%longitude
             CASE ( 'latitude' )    ; icolm(av)%cell_sheet => data(col)%latitude
+
             CASE ( 'col_num' )     ; icolm(av)%cell_sheet => data(col)%col_num
 
             CASE ( 'longwave' )    ; icolm(av)%cell_sheet => data(col)%longwave
@@ -1210,8 +1214,10 @@ SUBROUTINE define_zone_column(zcolm, zon)
          SELECT CASE (tvar%name)
             CASE ( 'timestep' )    ; zcolm(av)%cell_sheet => timestep
             CASE ( 'yearday' )     ; zcolm(av)%cell_sheet => yearday
+
             CASE ( 'longitude' )   ; zcolm(av)%cell_sheet => aedZones(zon)%longitude
             CASE ( 'latitude' )    ; zcolm(av)%cell_sheet => aedZones(zon)%latitude
+
             CASE ( 'col_num' )     ; zcolm(av)%cell_sheet => aedZones(zon)%z_env%z_col_num
 
             CASE ( 'longwave' )    ; zcolm(av)%cell_sheet => aedZones(zon)%z_env%z_longwave
