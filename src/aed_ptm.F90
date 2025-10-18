@@ -242,74 +242,72 @@ SUBROUTINE Particles(n_cells)
    zz = zero_
 
 !------------
-      !print*,"PTM START", aed_n_groups, aed_n_particles
+   !print*,"PTM START", aed_n_groups, aed_n_particles
 
-      DO cell=1, size(all_particles)
-         IF (ALLOCATED(all_particles(cell)%prt)) DEALLOCATE(all_particles(cell)%prt)
-         all_particles(cell)%count = 0
-      ENDDO 
-      count_check = 0
-      DO grp=1,aed_n_groups
-            !print*,"PTM GRP", grp
+   DO cell=1, size(all_particles)
+      IF (ALLOCATED(all_particles(cell)%prt)) DEALLOCATE(all_particles(cell)%prt)
+      all_particles(cell)%count = 0
+   ENDDO
+   count_check = 0
+   DO grp=1,aed_n_groups
+      !print*,"PTM GRP", grp
 
-         ! First, loop through all particles, and count how mnay are in each cell
-         DO prt=1,aed_n_particles
-           !IF (prt<30) print *,'STAT', prt,ptm_istat(grp,prt,STAT),ptm_istat(grp,prt,IDX3) 
-            IF ( ptm_istat(grp,prt,STAT) >= 0 ) THEN
-               cell = ptm_istat(grp,prt,IDX3)
-               IF ( cell >= 1 .AND. cell <= size(all_particles) ) THEN
-                  all_particles(cell)%count = all_particles(cell)%count + 1
-              !ELSE
-              !   print*,"idx out of range", i, size(all_particles)
-              !   stop
-               ENDIF
-            ENDIF
-         ENDDO
-         DO ii=1,n_cells
-             count_check = count_check+all_particles(ii)%count
-             !print*,"PTM CELL", ii, all_particles(ii)%count
-         ENDDO
-         !print*,"PTM CHK", count_check
-            
-!     ENDDO
-!     DO grp=1,num_groups
-         ! Now, loop through all particles, and populate the particle-cell object
-         DO prt=1,aed_n_particles
-            IF ( ptm_istat(grp,prt,STAT) < 0 ) CYCLE  !# ignore these
-
+      ! First, loop through all particles, and count how mnay are in each cell
+      DO prt=1,aed_n_particles
+        !IF (prt<30) print *,'STAT', prt,ptm_istat(grp,prt,STAT),ptm_istat(grp,prt,IDX3)
+         IF ( ptm_istat(grp,prt,STAT) >= 0 ) THEN
             cell = ptm_istat(grp,prt,IDX3)
             IF ( cell >= 1 .AND. cell <= size(all_particles) ) THEN
-               ! If the particle is in a cell, first check if the particle-cell
-               ! object is already allocated. If not, allocate it and init n to 0
-               IF (.NOT. ALLOCATED(all_particles(cell)%prt)) THEN
-                  ALLOCATE(all_particles(cell)%prt(all_particles(cell)%count))
-                  all_particles(cell)%n = 0
-               ENDIF
-               ! Increment the new particle that was found in the particle-cell object
-               ! and if this is less than the total count, add the new particle to the list
-               j = all_particles(cell)%n + 1              ! add new particle
-               IF (j <= all_particles(cell)%count ) THEN  
-                  all_particles(cell)%prt(j)%grp = grp
-                  all_particles(cell)%prt(j)%idx = prt
-                  all_particles(cell)%n = j
-                  !print*,"PTM", grp, prt, cell, j, all_particles(cell)%count
-              !ELSE
-              !   print*,"Ooops, error in PTM", j, all_particles(i)%count
-               ENDIF
-!           ELSE
-!              print*,"idx out of range", i, size(all_particles)
-!              print*,"grp", grp, " prt ",prt
-!              print*,"istat 1", particle_groups(grp)%istat(1,prt)
-!              print*,"istat 2", particle_groups(grp)%istat(2,prt)
-!              print*,"istat 3", particle_groups(grp)%istat(3,prt)
-!              print*,"istat 4", particle_groups(grp)%istat(4,prt)
-!              stop
+               all_particles(cell)%count = all_particles(cell)%count + 1
+           !ELSE
+           !   print*,"idx out of range", i, size(all_particles)
+           !   stop
             ENDIF
-         ENDDO ! particles
-      ENDDO    ! groups
-!   ENDIF
-!-------
+         ENDIF
+      ENDDO
+      DO ii=1,n_cells
+          count_check = count_check+all_particles(ii)%count
+          !print*,"PTM CELL", ii, all_particles(ii)%count
+      ENDDO
+      !print*,"PTM CHK", count_check
 
+!  ENDDO
+!  DO grp=1,num_groups
+      ! Now, loop through all particles, and populate the particle-cell object
+      DO prt=1,aed_n_particles
+         IF ( ptm_istat(grp,prt,STAT) < 0 ) CYCLE  !# ignore these
+
+         cell = ptm_istat(grp,prt,IDX3)
+         IF ( cell >= 1 .AND. cell <= size(all_particles) ) THEN
+            ! If the particle is in a cell, first check if the particle-cell
+            ! object is already allocated. If not, allocate it and init n to 0
+            IF (.NOT. ALLOCATED(all_particles(cell)%prt)) THEN
+               ALLOCATE(all_particles(cell)%prt(all_particles(cell)%count))
+               all_particles(cell)%n = 0
+            ENDIF
+            ! Increment the new particle that was found in the particle-cell object
+            ! and if this is less than the total count, add the new particle to the list
+            j = all_particles(cell)%n + 1              ! add new particle
+            IF (j <= all_particles(cell)%count ) THEN
+               all_particles(cell)%prt(j)%grp = grp
+               all_particles(cell)%prt(j)%idx = prt
+               all_particles(cell)%n = j
+               !print*,"PTM", grp, prt, cell, j, all_particles(cell)%count
+           !ELSE
+           !   print*,"Ooops, error in PTM", j, all_particles(i)%count
+            ENDIF
+!        ELSE
+!           print*,"idx out of range", i, size(all_particles)
+!           print*,"grp", grp, " prt ",prt
+!           print*,"istat 1", particle_groups(grp)%istat(1,prt)
+!           print*,"istat 2", particle_groups(grp)%istat(2,prt)
+!           print*,"istat 3", particle_groups(grp)%istat(3,prt)
+!           print*,"istat 4", particle_groups(grp)%istat(4,prt)
+!           stop
+         ENDIF
+      ENDDO ! particles
+   ENDDO    ! groups
+!-------
 
 END SUBROUTINE Particles
 !+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
@@ -340,8 +338,8 @@ SUBROUTINE aed_calculate_particles(icolm, col, nlev)
 !BEGIN
    IF (aed_n_groups == 0 .OR. aed_n_particles == 0) RETURN
 
-   DO lev=1,nlev
-   ENDDO
+!  DO lev=1,nlev
+!  ENDDO
 
    DO lev=1,nlev
       layer_particles => all_particles(lev)   
@@ -374,9 +372,7 @@ SUBROUTINE aed_calculate_particles(icolm, col, nlev)
          CALL aed_particle_bgc(icolm,lev,ppid,p=ptm) ! Note: ppid getting incremeted in here
       !ENDIF
       DEALLOCATE(ptm)
-
    ENDDO !end layer loop
-
 END SUBROUTINE aed_calculate_particles
 !+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 
@@ -419,8 +415,6 @@ SUBROUTINE Particles_zz(column, count, parts)
          idxi3 =  particle_groups(grp)%idx_3   ! should be 3
 
          IF ( particle_groups(grp)%status(stat, prt) >= 0 ) THEN
-
-
             NU = ubound(particle_groups(grp)%vars, 1)
             n = min(16, size(particle_groups(grp)%prop(:,prt)))
 
@@ -446,7 +440,7 @@ SUBROUTINE Particles_zz(column, count, parts)
             zz(17:18) = particle_groups(grp)%age(1:2,prt)   !Birth and Age
             zz(19) = particle_groups(grp)%status(stat, prt)    !Status
 
-        !    CALL aed_particle_bgc(column,lev,ppid,zz)     !ppid getting incremeted in here
+        !   CALL aed_particle_bgc(column,lev,ppid,zz)     !ppid getting incremeted in here
 
            !particle_groups(grp)%prop(1:n,prt) = zz(1:n)
             particle_groups(grp)%prop(particle_groups(grp)%idx_uvw0, prt)   = zz(1)
@@ -466,7 +460,7 @@ SUBROUTINE Particles_zz(column, count, parts)
 
             IF (NU > 0) particle_groups(grp)%vars(1, prt) = zz(15)
             IF (NU > 1) particle_groups(grp)%vars(2, prt) = zz(16)
-            particle_groups(grp)%status(stat, prt) = zz(19)
+            particle_groups(grp)%status(stat, prt) = INT(zz(19))
          ENDIF
          particle_groups(grp)%age(2,prt) = particle_groups(grp)%age(2,prt) + dt
       ENDDO

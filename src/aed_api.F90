@@ -557,7 +557,7 @@ INTEGER FUNCTION aed_configure_models(fname, NumWQ_Vars, NumWQ_Ben, NumWQ_Diag, 
 
    DO i=1,size(models)
       IF ( models(i) == '' ) EXIT
-      IF ( benthic_mode .GT. 1 ) models(i) = TRIM(models(i)) // ':za' ! make all models zone averaged
+      IF ( benthic_mode > 1 ) models(i) = TRIM(models(i)) // ':za' ! make all models zone averaged
       CALL aed_define_model(models(i), namlst)
    ENDDO
 
@@ -1375,6 +1375,7 @@ SUBROUTINE aed_run_model(nCols, nLevs, doSurface)
 !
 !LOCALS
    INTEGER :: col, top, bot, dir
+   LOGICAL :: first = .TRUE.
 !
 !-------------------------------------------------------------------------------
 !BEGIN
@@ -1385,24 +1386,29 @@ SUBROUTINE aed_run_model(nCols, nLevs, doSurface)
    !----------------------------------------------------------------------------
    !# Resetting and re-initialisation tasks
    DO col=1, nCols
-      IF (.NOT. data(col)%active) CYCLE  !# skip this column if dry
-
       top = data(col)%top_idx
       bot = data(col)%bot_idx
       IF ( bot > top ) THEN ; dir = -1 ; ELSE ; dir = 1 ; ENDIF
 
-      IF ( .NOT. reinited ) CALL re_initialize(all_cols(:,col), nLevs)
+      IF (.NOT. data(col)%active) THEN
+         CALL aed_calculate_dry(all_cols(:,col), bot);
+         CALL aed_calculate_riparian(all_cols(:,col), bot, zero_);
+      ELSE
+         CALL aed_calculate_riparian(all_cols(:,col), bot, one_);
 
-      data(col)%cc_diag = 0.
-      data(col)%cc_diag_hz = 0.
+         IF ( .NOT. reinited ) CALL re_initialize(all_cols(:,col), nLevs)
 
-      !-------------------------------------------------------------------------
-      !# Pre flux integration tasks
-      CALL pre_kinetics(all_cols(:,col), col, nLevs)
+         data(col)%cc_diag = 0.
+         data(col)%cc_diag_hz = 0.
 
-      !-------------------------------------------------------------------------
-      !# Main time-step tasks
-      CALL aed_run_column(all_cols(:,col), col, nLevs, doSurface)
+         !----------------------------------------------------------------------
+         !# Pre flux integration tasks
+         CALL pre_kinetics(all_cols(:,col), col, nLevs)
+
+         !----------------------------------------------------------------------
+         !# Main time-step tasks
+         CALL aed_run_column(all_cols(:,col), col, nLevs, doSurface)
+      ENDIF
    ENDDO
 
    !----------------------------------------------------------------------------
@@ -1500,7 +1506,7 @@ CONTAINS
    !----------------------------------------------------------------------------
    !BEGIN
       DO split=1,split_factor
-         IF (benthic_mode .GT. 1) THEN
+         IF (benthic_mode > 1) THEN
             CALL p_calc_zone_areas(aedZones, aed_n_zones, data(col)%area, data(col)%lheights, nlev)
             CALL p_copy_to_zone(aedZones, aed_n_zones, data(col)%lheights, data(col)%cc,  &
                                  data(col)%cc_hz, data(col)%cc_diag, data(col)%cc_diag_hz, nlev)
@@ -1524,7 +1530,7 @@ CONTAINS
          data(col)%cc(:, bot:top) = data(col)%cc(:, bot:top) + dt_eff*flux_pel(:, bot:top)
 
          !# Now update benthic variables, depending on whether zones are simulated
-         IF ( benthic_mode .GT. 1 ) THEN
+         IF ( benthic_mode > 1 ) THEN
             ! Loop through each sediment zone
             DO zon = 1, aed_n_zones
                ! update the mass for all benthic state variables
@@ -1590,17 +1596,18 @@ CONTAINS
 
       IF ( glm_style_zones ) THEN
          !# (1) BENTHIC INITIALISATION
-         IF ( benthic_mode .GT. 1 ) THEN
+         IF ( benthic_mode > 1 ) THEN
             !# Multiple static sediment zones are simulated, and therfore overlying
             !# water conditions need to be aggregated from multiple cells/layers
 
             DO zon=1,aed_n_zones
                column_sed => zon_cols(:,zon)
 
-        !      aedZones(zon)%z_env%z_sed_zones = zon  !MH TMP !CAB ???
 !              print *,'aedZones(zon)%z_sed_zones',aedZones(zon)%z_sed_zones !MH TMP
-               !# If multiple benthic zones, we must update the benthic variable pointer for the new zone
-               IF (zone_var .GT. 0) column_sed(zone_var)%cell_sheet => aedZones(zon)%z_env%z_sed_zones
+               !# If multiple benthic zones, we must update the benthic
+               !#  variable pointer for the new zone
+               IF (zone_var > 0) &
+                  column_sed(zone_var)%cell_sheet => aedZones(zon)%z_env%z_sed_zones
 
                sv = 0 ; sd = 0
 
@@ -1655,7 +1662,64 @@ CONTAINS
    !
    !----------------------------------------------------------------------------
    !BEGIN
-      IF ( benthic_mode > 1 ) THEN
+      SELECT CASE (benthic_mode)
+      CASE ( 0 )
+         !# Sediment zones are not simulated and therefore just operate on the bottom-most
+         !# GLM layer as the "benthos". If benthic_mode=1 then benthic fluxes will also be
+         !# applied on flanks of the remaining layers, but note this is not suitable for
+         !# model configurations where mass balance of benthic variables is required.
+
+         !# Calculate temporal derivatives due to exchanges at the sediment/water interface
+         IF ( zone_var >= 1 ) icolm(zone_var)%cell_sheet => aedZones(1)%z_env%z_sed_zones
+         CALL aed_calculate_benthic(icolm, bot)
+
+         !# Limit flux out of bottom layers to concentration of that layer
+         !# i.e. don't flux out more than is there is. Then
+         !# distribute bottom flux into pelagic over bottom box (i.e., divide by layer height)
+         !# Skip -ve values, as GEO_ubalchg is -ve and doesnt not comply with this logic
+         DO v=1,n_vars
+            IF ( data(col)%cc(v, bot) >= 0.0 ) &
+               flux_pel(v, bot) = max(-1.0 * data(col)%cc(v, bot), flux_pel(v, bot)/data(col)%dz(bot))
+         END DO
+      !# --------------------------------------
+      CASE ( 1 )
+         !# Sediment zones are not simulated and therefore just operate on the bottom-most
+         !# GLM layer as the "benthos". If benthic_mode=1 then benthic fluxes will also be
+         !# applied on flanks of the remaining layers, but note this is not suitable for
+         !# model configurations where mass balance of benthic variables is required.
+
+         !# Calculate temporal derivatives due to exchanges at the sediment/water interface
+         IF ( zone_var >= 1 ) icolm(zone_var)%cell_sheet => aedZones(1)%z_env%z_sed_zones
+         CALL aed_calculate_benthic(icolm, bot)
+
+         !# Limit flux out of bottom layers to concentration of that layer
+         !# i.e. don't flux out more than is there is. Then
+         !# distribute bottom flux into pelagic over bottom box (i.e., divide by layer height)
+         !# Skip -ve values, as GEO_ubalchg is -ve and doesnt not comply with this logic
+         DO v=1,n_vars
+            IF ( data(col)%cc(v, bot) >= 0.0 ) &
+               flux_pel(v, bot) = max(-1.0 * data(col)%cc(v, bot), flux_pel(v, bot)/data(col)%dz(bot))
+         END DO
+
+!$OMP DO
+         DO lev=2,nlev
+            !# Calculate temporal derivatives due to benthic fluxes.
+            CALL aed_calculate_benthic(icolm, lev)
+
+            !# Limit flux out of bottom layers to concentration of that layer
+            !# i.e. don't flux out more than is there
+            !# & distribute bottom flux into pelagic over bottom box (i.e., divide by layer height).
+            !# scaled to proportion of area that is "bottom"
+            DO v=1,n_vars
+               IF ( data(col)%cc(v, lev) >= 0.0 ) flux_pel(v, lev) = &
+                                max(-1.0 * data(col)%cc(v, lev), flux_pel(v, lev)/data(col)%dz(lev))
+            END DO
+            flux_pel(:, lev) = flux_pel(:, lev) * (data(col)%area(lev)-data(col)%area(lev-1))/data(col)%area(lev)
+         ENDDO
+!$OMP END DO
+
+      !# --------------------------------------
+      CASE ( 2, 3 )
          !# Multiple static sediment zones are simulated, and therfore overlying
          !# water conditions need to be aggregated from multiple cells/layers, and output flux
          !# needs disaggregating from each zone back to the overlying cells/layers
@@ -1668,8 +1732,10 @@ CONTAINS
             flux_ben = zero_
             flux_pel_pre = zero_
 
-            !# If multiple benthic zones, we must update the benthic variable pointer for the new zone
-            IF (zone_var > 0) column_sed(zone_var)%cell_sheet => aedZones(zon)%z_env%z_sed_zones
+            !# If multiple benthic zones, we must update the benthic
+            !#  variable pointer for the new zone
+            IF (zone_var > 0) &
+               column_sed(zone_var)%cell_sheet => aedZones(zon)%z_env%z_sed_zones
 
             sv = 0 ; sd = 0
             DO av=1,n_aed_vars
@@ -1705,9 +1771,8 @@ CONTAINS
               layer_map(lev) = zlev + nlev-lev
             ENDDO
             CALL aed_calculate_column(column_sed, layer_map)
-       !# This is unused. Only macrophyte has a routine for this, but it's link is commented out
 
-            IF ( benthic_mode .EQ. 3 ) THEN
+            IF ( benthic_mode == 3 ) THEN
                !# Zone is able to operated on by riparian and dry methods
                CALL aed_calculate_riparian(column_sed, zlev, aedZones(zon)%z_env%z_pc_wet)
                IF (aedZones(zon)%z_env%z_pc_wet < 0.01 ) CALL aed_calculate_dry(column_sed, zlev)
@@ -1747,8 +1812,8 @@ CONTAINS
          !# Disaggregation of zone induced fluxes to overlying layers
          zon = aed_n_zones
          DO lev=nlev,1,-1
-            IF ( zon .GT. 1 ) THEN
-               IF (lev .GT. 1) THEN
+            IF ( zon > 1 ) THEN
+               IF (lev > 1) THEN
                   splitZone = data(col)%lheights(lev-1) < aedZones(zon-1)%z_env%z_height
                ELSE
                   splitZone = 0.0 < aedZones(zon-1)%z_env%z_height
@@ -1758,7 +1823,7 @@ CONTAINS
             ENDIF
 
             IF (splitZone) THEN
-               IF (lev .GT. 1) THEN
+               IF (lev > 1) THEN
                   scale = (aedZones(zon-1)%z_env%z_height - data(col)%lheights(lev-1)) / &
                                               (data(col)%lheights(lev) - data(col)%lheights(lev-1))
                ELSE
@@ -1785,44 +1850,9 @@ CONTAINS
                              max(-1.0 * data(col)%cc(v, lev), flux_pel(v, lev)/data(col)%dz(lev))
             END DO
          ENDDO
-      ELSE
-         !# Sediment zones are not simulated and therefore just operate on the bottom-most
-         !# GLM layer as the "benthos". If benthic_mode=1 then benthic fluxes will also be
-         !# applied on flanks of the remaining layers, but note this is not suitable for
-         !# model configurations where mass balance of benthic variables is required.
-
-         !# Calculate temporal derivatives due to exchanges at the sediment/water interface
-         IF ( zone_var .GE. 1 ) icolm(zone_var)%cell_sheet => aedZones(1)%z_env%z_sed_zones
-         CALL aed_calculate_benthic(icolm, bot)
-
-         !# Limit flux out of bottom layers to concentration of that layer
-         !# i.e. don't flux out more than is there is. Then
-         !# distribute bottom flux into pelagic over bottom box (i.e., divide by layer height)
-         !# Skip -ve values, as GEO_ubalchg is -ve and doesnt not comply with this logic
-         DO v=1,n_vars
-            IF ( data(col)%cc(v, bot) .GE. 0.0 ) &
-               flux_pel(v, bot) = max(-1.0 * data(col)%cc(v, bot), flux_pel(v, bot)/data(col)%dz(bot))
-         END DO
-
-         IF ( benthic_mode .EQ. 1 ) THEN
-!$OMP DO
-            DO lev=2,nlev
-               !# Calculate temporal derivatives due to benthic fluxes.
-               CALL aed_calculate_benthic(icolm, lev)
-
-               !# Limit flux out of bottom layers to concentration of that layer
-               !# i.e. don't flux out more than is there
-               !# & distribute bottom flux into pelagic over bottom box (i.e., divide by layer height).
-               !# scaled to proportion of area that is "bottom"
-               DO v=1,n_vars
-                  IF ( data(col)%cc(v, lev) .GE. 0.0 ) flux_pel(v, lev) = &
-                                   max(-1.0 * data(col)%cc(v, lev), flux_pel(v, lev)/data(col)%dz(lev))
-               END DO
-               flux_pel(:, lev) = flux_pel(:, lev) * (data(col)%area(lev)-data(col)%area(lev-1))/data(col)%area(lev)
-            ENDDO
-!$OMP END DO
-         ENDIF
-      ENDIF
+      CASE DEFAULT
+         print*,"Unknown benthic mode"
+      END SELECT
    END SUBROUTINE glm_benthics
    !++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 
@@ -1839,6 +1869,7 @@ CONTAINS
    !
    !LOCALS
       INTEGER :: lev
+      INTEGER :: layer_map(nlev)
    !
    !----------------------------------------------------------------------------
    !BEGIN
@@ -1857,10 +1888,27 @@ CONTAINS
       !# Includes (i) benthic flux, (ii) surface exchange and (ii) kinetic updates in each cell
       !# as calculated by glm
 
+      !# SURFACE FLUXES
+      !# Calculate temporal derivatives due to air-water exchange.
+      IF (doSurface) THEN !# no surface exchange under ice cover
+         CALL aed_calculate_surface(icolm, top)
+
+         !# Distribute the fluxes into pelagic surface layer
+         flux_pel(:, top) = flux_pel(:, top) + flux_atm(:)/data(col)%dz(top)
+      ENDIF
+
       !# BENTHIC FLUXES
       IF ( glm_style_zones ) THEN
          CALL glm_benthics(icolm, col, nlev, bot)
       ELSE
+         !# COLUMN
+         !# Now update any column diagnostics (e.g., used for light)
+         !# glm_benthics does this differently
+         DO lev=1, nlev
+            layer_map(lev) = lev
+         ENDDO
+         CALL aed_calculate_column(icolm, layer_map)
+
          IF ( do_zone_averaging ) THEN
             flux_pel(:,nlev) = flux_pel(:,nlev) + flux_pel_z(:, bot) !/h(nlev)
 
@@ -1874,18 +1922,9 @@ CONTAINS
          flux_pel(:,bot) = flux_pel(:,bot)/data(col)%lheights(top)
       ENDIF
 
-      !# SURFACE FLUXES
-      !# Calculate temporal derivatives due to air-water exchange.
-      IF (doSurface) THEN !# no surface exchange under ice cover
-         CALL aed_calculate_surface(icolm, top)
-
-         !# Distribute the fluxes into pelagic surface layer
-         flux_pel(:, top) = flux_pel(:, top) + flux_atm(:)/data(col)%dz(top)
-      ENDIF
-
       !# WATER CELL KINETICS
       !# Add pelagic sink and source terms in cells of all depth levels.
-      DO lev=bot,top,dir
+      DO lev=bot, top, dir
          CALL aed_calculate(icolm, lev)
       ENDDO
    END SUBROUTINE calculate_fluxes
@@ -1968,7 +2007,7 @@ INTEGER FUNCTION aed_var_index(name)
       IF ( aed_get_var(i, tv) ) THEN
          IF ( .NOT. tv%sheet .AND. tv%var_type == V_STATE ) THEN
             v = v + 1
-            IF ( name .EQ. tv%name ) THEN
+            IF ( name == tv%name ) THEN
                aed_var_index = v
                RETURN
             ENDIF
