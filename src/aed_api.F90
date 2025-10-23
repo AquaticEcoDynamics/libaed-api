@@ -1404,14 +1404,13 @@ SUBROUTINE aed_run_model(nCols, nLevs, doSurface)
          !----------------------------------------------------------------------
          !# Pre flux integration tasks
          CALL pre_kinetics(all_cols(:,col), col, nLevs)
-
-        !----------------------------------------------------------------------
-        !#  Particle BGC is needed BEFORE aed_run_column so bioshade works
-        IF (do_particle_bgc) THEN 
-        	CALL Particles(nLevs)
-        	IF (.NOT. data(col)%active) CYCLE  !# skip this column if dry
-         	CALL aed_calculate_particles(all_cols(:,col), col, nLevs)
-    	  ENDIF
+         
+         !----------------------------------------------------------------------
+         !#  Particle BGC is needed BEFORE aed_run_column so bioshade works
+         IF (do_particle_bgc) THEN
+          CALL Particles(nLevs)
+          CALL aed_calculate_particles(all_cols(:,col), col, nLevs)
+         ENDIF
 
 
          !----------------------------------------------------------------------
