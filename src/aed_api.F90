@@ -1405,6 +1405,15 @@ SUBROUTINE aed_run_model(nCols, nLevs, doSurface)
          !# Pre flux integration tasks
          CALL pre_kinetics(all_cols(:,col), col, nLevs)
 
+        !----------------------------------------------------------------------
+        !#  Particle BGC is needed BEFORE aed_run_column so bioshade works
+        IF (do_particle_bgc) THEN 
+        	CALL Particles(nLevs)
+        	IF (.NOT. data(col)%active) CYCLE  !# skip this column if dry
+         	CALL aed_calculate_particles(all_cols(:,col), col, nLevs)
+    	  ENDIF
+
+
          !----------------------------------------------------------------------
          !# Main time-step tasks
          CALL aed_run_column(all_cols(:,col), col, nLevs, doSurface)
@@ -1413,14 +1422,14 @@ SUBROUTINE aed_run_model(nCols, nLevs, doSurface)
 
    !----------------------------------------------------------------------------
    !# Particle tracking tasks
-   IF (do_particle_bgc) THEN
+   !IF (do_particle_bgc) THEN
    !  print *,'Particle BGC', call_count, nLevs
-      CALL Particles(nLevs)
-      DO col=1, nCols
-         IF (.NOT. data(col)%active) CYCLE  !# skip this column if dry
-         CALL aed_calculate_particles(all_cols(:,col), col, nLevs)
-      ENDDO
-   ENDIF
+   !   CALL Particles(nLevs)
+   !   DO col=1, nCols
+   !      IF (.NOT. data(col)%active) CYCLE  !# skip this column if dry
+   !      CALL aed_calculate_particles(all_cols(:,col), col, nLevs)
+   !   ENDDO
+   !ENDIF
 
 !-------------------------------------------------------------------------------
 CONTAINS
@@ -1525,6 +1534,10 @@ CONTAINS
 
          !# Time-integrate one biological time step
          CALL calculate_fluxes(icolm, col, nlev, doSurface)
+
+        !# Update light needs to be called again so that any diagnostics that
+        !# influence like (e.g., cdom) have values from calculate_fluxes.
+         CALL update_light(icolm, col, nlev)
 
          !# Update the water column layers
          data(col)%cc(:, bot:top) = data(col)%cc(:, bot:top) + dt_eff*flux_pel(:, bot:top)
