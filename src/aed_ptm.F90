@@ -44,7 +44,6 @@ MODULE aed_ptm
 
    PUBLIC aed_part_group_t, aed_ptm_init, ptm_istat, ptm_env, Particles, aed_calculate_particles, set_ptm_aed_var_num
 
-
    !#--------------------------------------------------------------------------#
    !# Module Types
 
@@ -67,18 +66,11 @@ MODULE aed_ptm
    TYPE :: partgroup_p
       INTEGER :: idx, grp
    ENDTYPE
+
    TYPE :: partgroup_cell
       INTEGER :: count, n
       TYPE(partgroup_p),ALLOCATABLE,DIMENSION(:) :: prt
    END TYPE partgroup_cell
-
-
-!  TYPE :: partgroup_cell
-!      INTEGER :: count, n
-!      TYPE(partgroup_p),ALLOCATABLE,DIMENSION(:) :: prt
-!  END TYPE partgroup_cell
-
-
 
 !
 !-------------------------------------------------------------------------------
@@ -104,14 +96,15 @@ MODULE aed_ptm
 !   TYPE(partgroup),DIMENSION(:),POINTER :: particle_groups
    TYPE(partgroup_cell),DIMENSION(:),ALLOCATABLE, TARGET :: all_particles
 
-   INTEGER, PARAMETER :: STAT = 1  !#define STAT   0
-   INTEGER, PARAMETER :: IDX2 = 2  !#define IDX2   1
-   INTEGER, PARAMETER :: IDX3 = 3  !#define IDX3   2
-   INTEGER, PARAMETER :: LAYR = 4  !#define LAYR   3
-   INTEGER, PARAMETER :: FLAG = 5  !#define FLAG   4
-   INTEGER, PARAMETER :: PTID = 6  !#define PTID   5
+   INTEGER, PARAMETER :: STAT = 1
+   INTEGER, PARAMETER :: IDX2 = 2
+   INTEGER, PARAMETER :: IDX3 = 3
+   INTEGER, PARAMETER :: LAYR = 4
+   INTEGER, PARAMETER :: FLAG = 5
+   INTEGER, PARAMETER :: PTID = 6
 !===============================================================================
 CONTAINS
+
 
 !###############################################################################
 SUBROUTINE aed_ptm_init(ng,np,parts,n_ptm_vars_,n_cells)
@@ -138,7 +131,7 @@ SUBROUTINE aed_ptm_init(ng,np,parts,n_ptm_vars_,n_cells)
       particle_groups => parts
    ENDIF
 
-   ! Allocating AED PTM arrays : status, environment, state and diagnostic
+   !# Allocating AED PTM arrays : status, environment, state and diagnostic
    ALLOCATE(ptm_istat(aed_n_groups,1:aed_n_particles,1:n_ptm_istat),stat=rc)
      IF (rc /= 0) STOP 'allocate_memory(): ERROR allocating (ptm_istat)'
    ALLOCATE(ptm_env(aed_n_groups,1:aed_n_particles,1:n_ptm_env+n_ptm_vars),stat=rc)
@@ -148,8 +141,7 @@ SUBROUTINE aed_ptm_init(ng,np,parts,n_ptm_vars_,n_cells)
    ALLOCATE(ptm_diag(aed_n_groups,1:aed_n_particles,1:n_ptm_vars),stat=rc) ! Not yet used
      IF (rc /= 0) STOP 'allocate_memory(): ERROR allocating (ptm_diag)'
 
-
-   !----------------------------------------------------------------------------
+   !#---------------------------------------------------------------------------
    !# Now set initial values
    ptm_istat(:,:,:) = -9999
    ptm_env(:,:,:)   = -9999.
@@ -163,11 +155,11 @@ SUBROUTINE aed_ptm_init(ng,np,parts,n_ptm_vars_,n_cells)
           pv = pv + 1 
 
          !print *,'PTM',pv,n_ptm_env,tvar%initial 
-          ptm_state(:,:,pv) = tvar%initial ! Note this is all particles, regardless of status (ptm_env(:,:,n_ptm_env+1:n_ptm_env+n_ptm_vars))
+          ptm_state(:,:,pv) = tvar%initial !# Note this is all particles, regardless of status
+                                           !#    (ptm_env(:,:,n_ptm_env+1:n_ptm_env+n_ptm_vars))
           ptm_env(:,:,n_ptm_env+pv) = tvar%initial 
       ENDIF
    ENDDO
-
 
    ALLOCATE(ptm(aed_n_particles*aed_n_groups))
 
@@ -185,8 +177,6 @@ SUBROUTINE aed_ptm_init(ng,np,parts,n_ptm_vars_,n_cells)
 
    CALL aed_initialize_particle(ppid,ptm) 
    DEALLOCATE(ptm)
-
-
 
    ! !TESTS
    ! ptm_istat(1,5000,1) = 42
@@ -206,19 +196,14 @@ SUBROUTINE aed_ptm_init(ng,np,parts,n_ptm_vars_,n_cells)
    !
    !!print*,"allocating all_parts with ", ubound(temp,1), " cells"
    ALLOCATE(all_particles(n_cells))   
-
-
 END SUBROUTINE aed_ptm_init
 !+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
-
 
 
 !###############################################################################
 SUBROUTINE Particles(n_cells)
 !-------------------------------------------------------------------------------
-!
 ! Calculate biogeochemical transformations on particles 
-!
 !-------------------------------------------------------------------------------
 !ARGUMENTS
 !   TYPE (aed_column_t), INTENT(inout) :: column(:)
@@ -233,7 +218,6 @@ SUBROUTINE Particles(n_cells)
    AED_REAL :: dt = 3600
 
    TYPE (aed_ptm_t) :: ptm
-
 !
 !-------------------------------------------------------------------------------
  
@@ -377,7 +361,6 @@ END SUBROUTINE aed_calculate_particles
 !+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 
 
-
 !###############################################################################
 SUBROUTINE Particles_zz(column, count, parts)
 !-------------------------------------------------------------------------------
@@ -396,7 +379,6 @@ SUBROUTINE Particles_zz(column, count, parts)
    AED_REAL,DIMENSION(20) :: zz
    INTEGER :: stat, idxi3
    AED_REAL :: dt = 3600
-
 !
 !-------------------------------------------------------------------------------
  
@@ -482,11 +464,7 @@ SUBROUTINE set_ptm_aed_var_num(n_aed_vars)
 !BEGIN
 
   n_aed_vars_ = n_aed_vars
-
 END SUBROUTINE set_ptm_aed_var_num
 !+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 
 END MODULE aed_ptm
-
-
-

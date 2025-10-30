@@ -1300,71 +1300,6 @@ END SUBROUTINE define_zone_column
 
 
 !###############################################################################
-SUBROUTINE check_states(col, nlev)
-!-------------------------------------------------------------------------------
-!ARGUMENTS
-   INTEGER,INTENT(in) :: col, nlev
-!
-!LOCALS
-   TYPE(aed_variable_t),POINTER :: tv
-   INTEGER :: i, v, sv, lev
-#if DEBUG
-   INTEGER :: last_naned = -1
-#endif
-!
-!-------------------------------------------------------------------------------
-!BEGIN
-   IF ( .NOT. repair_state ) RETURN
-
-   v = 0 ; sv = 0
-   DO i=1,n_aed_vars
-      IF ( aed_get_var(i, tv) ) THEN
-         IF ( tv%var_type == V_STATE ) THEN
-            IF (tv%sheet) THEN
-               sv = sv + 1
-#if DEBUG
-               IF ( last_naned == -1 .AND. ieee_is_nan(data(col)%cc_hz(sv)) ) last_naned = i
-#endif
-               IF ( .NOT. ieee_is_nan(tv%minimum) ) THEN
-                  IF ( data(col)%cc_hz(sv) < tv%minimum ) data(col)%cc_hz(sv) = tv%minimum
-               ENDIF
-               IF ( .NOT. ieee_is_nan(tv%maximum) ) THEN
-                  IF ( data(col)%cc_hz(sv) > tv%maximum ) data(col)%cc_hz(sv) = tv%maximum
-               ENDIF
-            ELSE
-               v = v + 1
-               DO lev=1, nlev
-#if DEBUG
-                  IF ( last_naned == -1 .AND. ieee_is_nan(data(col)%cc(v, lev)) ) last_naned = i
-#endif
-                  IF ( .NOT. ieee_is_nan(tv%minimum) ) THEN
-                     IF ( data(col)%cc(v, lev) < tv%minimum ) data(col)%cc(v, lev) = tv%minimum
-                  ENDIF
-                  IF ( .NOT. ieee_is_nan(tv%maximum) ) THEN
-                     IF ( data(col)%cc(v, lev) > tv%maximum ) data(col)%cc(v, lev) = tv%maximum
-                  ENDIF
-               ENDDO
-            ENDIF
-         ENDIF
-      ENDIF
-   ENDDO
-
-#if DEBUG
-   IF ( last_naned > -1 ) THEN
-      print*
-      IF ( aed_get_var(last_naned, tv) ) THEN
-         print*,"NaNs detected in CC in var ", TRIM(tv%name)
-      ELSE
-         print*,"NaNs detected in CC unidentified var"
-      ENDIF
-!     STOP
-   ENDIF
-#endif
-END SUBROUTINE check_states
-!+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
-
-
-!###############################################################################
 SUBROUTINE aed_run_model(nCols, nLevs, doSurface)
 !-------------------------------------------------------------------------------
 !                        nLevs is the number of levels used;
@@ -1374,7 +1309,7 @@ SUBROUTINE aed_run_model(nCols, nLevs, doSurface)
    LOGICAL,INTENT(in) :: doSurface
 !
 !LOCALS
-   INTEGER :: col, top, bot, dir
+   INTEGER :: col, top, bot, dir, hi_idx, lo_idx
    LOGICAL :: first = .TRUE.
 !
 !-------------------------------------------------------------------------------
@@ -1383,12 +1318,21 @@ SUBROUTINE aed_run_model(nCols, nLevs, doSurface)
    !# reset effective time/step
    dt_eff = timestep/FLOAT(split_factor)
 
+   IF (do_particle_bgc) CALL Particles(nLevs)
+
    !----------------------------------------------------------------------------
    !# Resetting and re-initialisation tasks
    DO col=1, nCols
       top = data(col)%top_idx
       bot = data(col)%bot_idx
-      IF ( bot > top ) THEN ; dir = -1 ; ELSE ; dir = 1 ; ENDIF
+      IF ( bot > top ) THEN
+         dir = -1 ; hi_idx = bot ; lo_idx = top
+      ELSE
+         dir = 1  ; hi_idx = top ; lo_idx = bot
+      ENDIF
+
+      data(col)%cc_diag = zero_
+      data(col)%cc_diag_hz = zero_
 
       IF (.NOT. data(col)%active) THEN
          CALL aed_calculate_dry(all_cols(:,col), bot);
@@ -1398,29 +1342,18 @@ SUBROUTINE aed_run_model(nCols, nLevs, doSurface)
 
          IF ( .NOT. reinited ) CALL re_initialize(all_cols(:,col), nLevs)
 
-         data(col)%cc_diag = 0.
-         data(col)%cc_diag_hz = 0.
-
          !----------------------------------------------------------------------
          !# Pre flux integration tasks
          CALL pre_kinetics(all_cols(:,col), col, nLevs)
+
+         IF (do_particle_bgc) &
+            CALL aed_calculate_particles(all_cols(:,col), col, nLevs)
 
          !----------------------------------------------------------------------
          !# Main time-step tasks
          CALL aed_run_column(all_cols(:,col), col, nLevs, doSurface)
       ENDIF
    ENDDO
-
-   !----------------------------------------------------------------------------
-   !# Particle tracking tasks
-   IF (do_particle_bgc) THEN
-   !  print *,'Particle BGC', call_count, nLevs
-      CALL Particles(nLevs)
-      DO col=1, nCols
-         IF (.NOT. data(col)%active) CYCLE  !# skip this column if dry
-         CALL aed_calculate_particles(all_cols(:,col), col, nLevs)
-      ENDDO
-   ENDIF
 
 !-------------------------------------------------------------------------------
 CONTAINS
@@ -1458,7 +1391,7 @@ CONTAINS
                ENDIF
             ENDIF
          ENDDO
-         DO lev = bot, top
+         DO lev = bot, top, dir
             ! update ws for modules that use the mobility method
             CALL aed_mobility(icolm, lev, ws(:,lev))
          ENDDO
@@ -1475,7 +1408,8 @@ CONTAINS
                      !# only for state_vars that are not sheet, and also non-zero ws
                      IF ( .NOT. ieee_is_nan(tv%mobility) .AND. SUM(ABS(ws(i,:)))>zero_ ) THEN
                         min_C = tv%minimum
-                        CALL doMobility(nlev, timestep, data(col)%dz, data(col)%area, ws(i,:), min_C, data(col)%cc(v, :))
+                        CALL doMobility(nlev, timestep, data(col)%dz, data(col)%area, &
+                                                    ws(i,:), min_C, data(col)%cc(v, :))
                      ENDIF
                   ENDIF
                ENDIF
@@ -1502,15 +1436,19 @@ CONTAINS
    !
    !LOCALS
       INTEGER  :: v, lev, zon, split
+      AED_REAL :: localext, localext_up
    !
    !----------------------------------------------------------------------------
    !BEGIN
+      localext = zero_; localext_up = zero_
+
+      IF (benthic_mode > 1) &
+         CALL p_calc_zone_areas(aedZones, aed_n_zones, data(col)%area, data(col)%lheights, nlev)
+
       DO split=1,split_factor
-         IF (benthic_mode > 1) THEN
-            CALL p_calc_zone_areas(aedZones, aed_n_zones, data(col)%area, data(col)%lheights, nlev)
+         IF (benthic_mode > 1) &
             CALL p_copy_to_zone(aedZones, aed_n_zones, data(col)%lheights, data(col)%cc,  &
                                  data(col)%cc_hz, data(col)%cc_diag, data(col)%cc_diag_hz, nlev)
-         ENDIF
 
          !# Update local light field (self-shading may have changed through
          !# changes in biological state variables). Update_light is set to
@@ -1518,7 +1456,7 @@ CONTAINS
          !# surface par, then integrates over depth of a layer
          CALL update_light(icolm, col, nlev)
 
-         ! non PAR bandwidth fractions (set assuming single light extinction)
+         !# non PAR bandwidth fractions (set assuming single light extinction)
          data(col)%nir(:) = (data(col)%par(:)/par_fraction) * nir_fraction
          data(col)%uva(:) = (data(col)%par(:)/par_fraction) * uva_fraction
          data(col)%uvb(:) = (data(col)%par(:)/par_fraction) * uvb_fraction
@@ -1526,24 +1464,29 @@ CONTAINS
          !# Time-integrate one biological time step
          CALL calculate_fluxes(icolm, col, nlev, doSurface)
 
+         !# Update light needs to be called again so that any diagnostics that
+         !# influence it like (e.g., cdom) have values from calculate_fluxes.
+         CALL update_light(icolm, col, nlev)
+
          !# Update the water column layers
-         data(col)%cc(:, bot:top) = data(col)%cc(:, bot:top) + dt_eff*flux_pel(:, bot:top)
+         data(col)%cc(:, lo_idx:hi_idx) = data(col)%cc(:, lo_idx:hi_idx) + &
+                                           dt_eff*flux_pel(:, lo_idx:hi_idx)
 
          !# Now update benthic variables, depending on whether zones are simulated
          IF ( benthic_mode > 1 ) THEN
-            ! Loop through each sediment zone
+            !# Loop through each sediment zone
             DO zon = 1, aed_n_zones
-               ! update the mass for all benthic state variables
-               aedZones(zon)%z_cc_hz(1:n_vars_ben) = &
-                    aedZones(zon)%z_cc_hz(1:n_vars_ben) + dt_eff*flux_zon(n_vars+1:n_vars+n_vars_ben, zon)
+               !# update the mass for all benthic state variables
+               aedZones(zon)%z_cc_hz(1:n_vars_ben) = aedZones(zon)%z_cc_hz(1:n_vars_ben) + &
+                                            dt_eff*flux_zon(n_vars+1:n_vars+n_vars_ben, zon)
             ENDDO
 
             !# Distribute cc-sed benthic properties back into main cc array
             CALL p_copy_from_zone(aedZones, aed_n_zones, data(col)%lheights, data(col)%cc,  &
                                  data(col)%cc_hz, data(col)%cc_diag, data(col)%cc_diag_hz, nlev)
          ELSE
-            data(col)%cc_hz(1:n_vars_ben) = &
-               data(col)%cc_hz(1:n_vars_ben) + dt_eff*flux_ben(n_vars+1:n_vars+n_vars_ben)
+            data(col)%cc_hz(1:n_vars_ben) = data(col)%cc_hz(1:n_vars_ben) + &
+                                     dt_eff*flux_ben(n_vars+1:n_vars+n_vars_ben)
          ENDIF
 
          CALL check_states(col, nlev)
@@ -1763,8 +1706,8 @@ CONTAINS
                   EXIT
                ENDIF
             ENDDO
-            ! The upper height of the last zone may have no water above it.
-            ! In this case, set the wet-layer vector to just be the top water layer
+            !# The upper height of the last zone may have no water above it.
+            !# In this case, set the wet-layer vector to just be the top water layer
             IF (zlev == 0) zlev = nlev
 
             DO lev=zlev, nlev
@@ -1919,61 +1862,129 @@ CONTAINS
          ENDIF
 
          !# Distribute bottom flux into pelagic over bottom box (i.e., divide by layer height).
-         flux_pel(:,bot) = flux_pel(:,bot)/data(col)%lheights(top)
+         flux_pel(:,bot) = flux_pel(:,bot)/data(col)%lheights(bot)
       ENDIF
 
       !# WATER CELL KINETICS
       !# Add pelagic sink and source terms in cells of all depth levels.
-      DO lev=bot, top, dir
+    ! DO lev=bot, top, dir
+      DO lev=top, bot, -dir
          CALL aed_calculate(icolm, lev)
       ENDDO
    END SUBROUTINE calculate_fluxes
    !++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 
+
+   !############################################################################
+   SUBROUTINE check_states(col, nlev)
+   !----------------------------------------------------------------------------
+   !ARGUMENTS
+      INTEGER,INTENT(in) :: col, nlev
+   !
+   !LOCALS
+      TYPE(aed_variable_t),POINTER :: tv
+      INTEGER :: i, v, sv, lev
+#if DEBUG
+      INTEGER :: last_naned = -1
+#endif
+   !
+   !----------------------------------------------------------------------------
+   !BEGIN
+      IF ( .NOT. repair_state ) RETURN
+
+      v = 0 ; sv = 0
+      DO i=1,n_aed_vars
+         IF ( aed_get_var(i, tv) ) THEN
+            IF ( tv%var_type == V_STATE ) THEN
+               IF (tv%sheet) THEN
+                  sv = sv + 1
+#if DEBUG
+                  IF ( last_naned == -1 .AND. ieee_is_nan(data(col)%cc_hz(sv)) ) &
+                     last_naned = i
+#endif
+                  IF ( .NOT. ieee_is_nan(tv%minimum) ) THEN
+                     IF ( data(col)%cc_hz(sv) < tv%minimum ) &
+                        data(col)%cc_hz(sv) = tv%minimum
+                  ENDIF
+                  IF ( .NOT. ieee_is_nan(tv%maximum) ) THEN
+                     IF ( data(col)%cc_hz(sv) > tv%maximum ) &
+                        data(col)%cc_hz(sv) = tv%maximum
+                  ENDIF
+               ELSE
+                  v = v + 1
+                  DO lev=1, nlev
+#if DEBUG
+                     IF ( last_naned == -1 .AND. ieee_is_nan(data(col)%cc(v, lev)) ) &
+                        last_naned = i
+#endif
+                     IF ( .NOT. ieee_is_nan(tv%minimum) ) THEN
+                        IF ( data(col)%cc(v, lev) < tv%minimum ) &
+                           data(col)%cc(v, lev) = tv%minimum
+                     ENDIF
+                     IF ( .NOT. ieee_is_nan(tv%maximum) ) THEN
+                        IF ( data(col)%cc(v, lev) > tv%maximum ) &
+                           data(col)%cc(v, lev) = tv%maximum
+                     ENDIF
+                  ENDDO
+               ENDIF
+            ENDIF
+         ENDIF
+      ENDDO
+
+#if DEBUG
+      IF ( last_naned > -1 ) THEN
+         print*
+         IF ( aed_get_var(last_naned, tv) ) THEN
+            print*,"NaNs detected in CC in var ", TRIM(tv%name)
+         ELSE
+            print*,"NaNs detected in CC unidentified var"
+         ENDIF
+!        STOP
+      ENDIF
+#endif
+   END SUBROUTINE check_states
+   !++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+
+   !############################################################################
+   SUBROUTINE update_light(icolm, col, nlev)
+   !----------------------------------------------------------------------------
+   ! Calculate photosynthetically active radiation over entire column based
+   ! on surface radiation, attenuated based on background & biotic extinction
+   !----------------------------------------------------------------------------
+   !ARGUMENTS
+      TYPE (aed_column_t),INTENT(inout) :: icolm(:)
+      INTEGER,INTENT(in) :: col, nlev
+   !
+   !LOCALS
+      INTEGER :: lev
+      AED_REAL :: localext, localext_up
+   !
+   !----------------------------------------------------------------------------
+   !BEGIN
+      localext = zero_; localext_up = zero_
+
+      ! Surface Kd
+      CALL aed_light_extinction(icolm, top, localext)
+
+      ! Surface PAR
+      data(col)%par(top) = &
+           par_fraction * data(col)%rad(top) * EXP( -(Kw+localext)*1e-6*data(col)%dz(top) )
+
+      ! Now set the top of subsequent layers, down to the bottom
+      DO lev = (top-dir), bot, -dir
+         localext_up = localext
+         CALL aed_light_extinction(icolm, lev, localext)
+
+         data(col)%par(lev) = &
+            data(col)%par(lev-dir) * EXP( -(Kw + localext_up) * data(col)%dz(lev-dir) )
+
+         IF (bioshade_feedback) data(col)%extc(lev) = Kw + localext
+      ENDDO
+   END SUBROUTINE update_light
+   !++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
 END SUBROUTINE aed_run_model
-!+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
-
-
-!###############################################################################
-SUBROUTINE update_light(icolm, col, nlev)
-!-------------------------------------------------------------------------------
-! Calculate photosynthetically active radiation over entire column based
-! on surface radiation, attenuated based on background & biotic extinction
-!-------------------------------------------------------------------------------
-!ARGUMENTS
-   TYPE (aed_column_t),INTENT(inout) :: icolm(:)
-   INTEGER,INTENT(in) :: col, nlev
-!
-!LOCALS
-   INTEGER :: i, start, end, step, first
-   AED_REAL :: localext, localext_up
-!
-!-------------------------------------------------------------------------------
-!BEGIN
-   localext = zero_; localext_up = zero_
-
-   IF (data(col)%bot_idx < data(col)%top_idx) THEN
-      first = data(col)%top_idx ; start = first-1 ; end = data(col)%bot_idx ; step = -1
-   ELSE
-      first = data(col)%bot_idx ; start = first+1 ; end = data(col)%top_idx ; step = 1
-   ENDIF
-
-   ! Surface Kd
-   CALL aed_light_extinction(icolm, first, localext)
-
-   ! Surface PAR
-   data(col)%par(first) = par_fraction * data(col)%rad(first) * EXP( -(Kw+localext)*1e-6*data(col)%dz(first) )
-
-   ! Now set the top of subsequent layers, down to the bottom
-   DO i = start,end,step
-      localext_up = localext
-      CALL aed_light_extinction(icolm, i, localext)
-
-      data(col)%par(i) = data(col)%par(i+1) * EXP( -(Kw + localext_up) * data(col)%dz(i+1) )
-
-      IF (bioshade_feedback) data(col)%extc(i) = Kw + localext
-   ENDDO
-END SUBROUTINE update_light
 !+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 
 
@@ -1985,7 +1996,7 @@ SUBROUTINE aed_clean_model()
 !BEGIN
    CALL aed_delete()
    ! Deallocate internal arrays
-   IF (ALLOCATED(ws))   DEALLOCATE(ws)
+   IF (ALLOCATED(ws)) DEALLOCATE(ws)
 END SUBROUTINE aed_clean_model
 !+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 
