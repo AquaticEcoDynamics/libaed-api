@@ -1310,7 +1310,9 @@ SUBROUTINE aed_run_model(nCols, nLevs, doSurface)
 !
 !LOCALS
    INTEGER :: col, top, bot, dir, hi_idx, lo_idx
+   INTEGER :: d, sd, i
    LOGICAL :: first = .TRUE.
+   TYPE(aed_variable_t),POINTER :: tv
 !
 !-------------------------------------------------------------------------------
 !BEGIN
@@ -1330,10 +1332,27 @@ SUBROUTINE aed_run_model(nCols, nLevs, doSurface)
       ELSE
          dir = 1  ; hi_idx = top ; lo_idx = bot
       ENDIF
-
-      data(col)%cc_diag = zero_
-      data(col)%cc_diag_hz = zero_
-
+      
+      d = 0; sd = 0
+      DO i=1,n_aed_vars
+         IF ( aed_get_var(i, tv) ) THEN
+            IF (tv%var_type == V_DIAGNOSTIC) THEN
+               IF(tv%sheet) THEN
+                  sd = sd + 1
+      			    IF(tv%rezero) THEN
+      			    	data(col)%cc_diag_hz(sd) = zero_	   			
+      		   		ENDIF
+      		   	ELSE
+      		   		d = d + 1
+      		   		IF(tv%rezero) THEN
+      					data(col)%cc_diag(d, :) = zero_
+      		   		ENDIF
+      			ENDIF
+      		ENDIF
+      	ENDIF
+      ENDDO
+      
+            
       IF (.NOT. data(col)%active) THEN
          CALL aed_calculate_dry(all_cols(:,col), bot);
          CALL aed_calculate_riparian(all_cols(:,col), bot, zero_);
