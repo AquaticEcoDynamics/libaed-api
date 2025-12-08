@@ -1339,18 +1339,18 @@ SUBROUTINE aed_run_model(nCols, nLevs, doSurface)
             IF (tv%var_type == V_DIAGNOSTIC) THEN
                IF(tv%sheet) THEN
                   sd = sd + 1
-      			    IF(tv%rezero) THEN
-      			    	data(col)%cc_diag_hz(sd) = zero_	   			
-      		   		ENDIF
-      		   	ELSE
-      		   		d = d + 1
-      		   		IF(tv%rezero) THEN
-      					data(col)%cc_diag(d, :) = zero_
-      		   		ENDIF
-      			ENDIF
-      		ENDIF
-      	ENDIF
-      ENDDO
+                  IF(tv%rezero) THEN
+                    data(col)%cc_diag_hz(sd) = zero_
+                  ENDIF
+               ELSE
+                  d = d + 1
+                  IF(tv%rezero) THEN
+                    data(col)%cc_diag(d, :) = zero_
+                  ENDIF
+               ENDIF
+            ENDIF
+        ENDIF
+    ENDDO
       
             
       IF (.NOT. data(col)%active) THEN
@@ -1482,10 +1482,6 @@ CONTAINS
 
          !# Time-integrate one biological time step
          CALL calculate_fluxes(icolm, col, nlev, doSurface)
-
-         !# Update light needs to be called again so that any diagnostics that
-         !# influence it like (e.g., cdom) have values from calculate_fluxes.
-         CALL update_light(icolm, col, nlev)
 
          !# Update the water column layers
          data(col)%cc(:, lo_idx:hi_idx) = data(col)%cc(:, lo_idx:hi_idx) + &
