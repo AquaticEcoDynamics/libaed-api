@@ -1319,7 +1319,7 @@ SUBROUTINE aed_run_model(nCols, nLevs, doSurface)
    !----------------------------------------------------------------------------
    !# reset effective time/step
    dt_eff = timestep/FLOAT(split_factor)
-
+   
    IF (do_particle_bgc) CALL Particles(nLevs)
 
    !----------------------------------------------------------------------------
@@ -1844,17 +1844,8 @@ CONTAINS
       !# WATER COLUMN UPDATING
       !# Now do the general calculation all flux terms for rhs in mass/m3/s
       !# Includes (i) benthic flux, (ii) surface exchange and (ii) kinetic updates in each cell
-      !# as calculated by glm
-
-      !# SURFACE FLUXES
-      !# Calculate temporal derivatives due to air-water exchange.
-      IF (doSurface) THEN !# no surface exchange under ice cover
-         CALL aed_calculate_surface(icolm, top)
-
-         !# Distribute the fluxes into pelagic surface layer
-         flux_pel(:, top) = flux_pel(:, top) + flux_atm(:)/data(col)%dz(top)
-      ENDIF
-
+      !# as calculated by glm    
+      
       !# BENTHIC FLUXES
       IF ( glm_style_zones ) THEN
          CALL glm_benthics(icolm, col, nlev, bot)
@@ -1869,15 +1860,26 @@ CONTAINS
 
          IF ( do_zone_averaging ) THEN
             flux_pel(:,nlev) = flux_pel(:,nlev) + flux_pel_z(:, bot) !/h(nlev)
-
+            
             !# Calculate temporal derivatives due to benthic exchange processes.
             CALL aed_calculate_benthic(icolm, bot, .FALSE.)
          ELSE
             CALL aed_calculate_benthic(icolm, bot)
          ENDIF
-
+         
          !# Distribute bottom flux into pelagic over bottom box (i.e., divide by layer height).
          flux_pel(:,bot) = flux_pel(:,bot)/data(col)%lheights(bot)
+         
+      ENDIF
+      
+      !# SURFACE FLUXES
+      !# Calculate temporal derivatives due to air-water exchange.
+      IF (doSurface) THEN !# no surface exchange under ice cover
+         CALL aed_calculate_surface(icolm, top)
+
+         !# Distribute the fluxes into pelagic surface layer
+
+         flux_pel(:, top) = flux_pel(:, top) + flux_atm(:)/data(col)%dz(top)
       ENDIF
 
       !# WATER CELL KINETICS
@@ -1886,6 +1888,7 @@ CONTAINS
       DO lev=top, bot, -dir
          CALL aed_calculate(icolm, lev)
       ENDDO
+
    END SUBROUTINE calculate_fluxes
    !++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 
