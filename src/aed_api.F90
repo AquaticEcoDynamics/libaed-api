@@ -73,15 +73,15 @@ MODULE aed_api
    !* A structure to pass coupling configuration values to AED  *!
    !*-----------------------------------------------------------*!
    TYPE aed_coupling_t
-      LOGICAL  :: mobility_off
-      LOGICAL  :: bioshade_feedback
-      LOGICAL  :: repair_state
-      LOGICAL  :: link_rain_loss
-      LOGICAL  :: link_solar_shade
-      LOGICAL  :: link_bottom_drag
-      LOGICAL  :: ice
-      LOGICAL  :: do_particle_bgc
-      LOGICAL  :: glm_style_zones = .FALSE.
+      LOGICAL  :: mobility_off      = .FALSE.
+      LOGICAL  :: bioshade_feedback = .FALSE.
+      LOGICAL  :: repair_state      = .FALSE.
+      LOGICAL  :: link_rain_loss    = .FALSE.
+      LOGICAL  :: link_solar_shade  = .FALSE.
+      LOGICAL  :: link_bottom_drag  = .FALSE.
+      LOGICAL  :: ice               = .FALSE.
+      LOGICAL  :: do_particle_bgc   = .FALSE.
+      LOGICAL  :: glm_style_zones   = .FALSE.
 
       INTEGER  :: split_factor = 1
       INTEGER  :: benthic_mode = 1
@@ -287,11 +287,11 @@ MODULE aed_api
    !* A structure defining anviromental variable.               *!
    !*-----------------------------------------------------------*!
    TYPE api_env_def_t
-      TYPE(aed_variable_t),POINTER :: tvar
-      AED_REAL,POINTER :: data      => null()
-      AED_REAL,DIMENSION(:),POINTER :: datac => null()
-      AED_REAL,POINTER :: zdata      => null()
-      AED_REAL,DIMENSION(:),POINTER :: zdatac => null()
+      TYPE(aed_variable_t),POINTER :: tvar     => null()
+      AED_REAL,POINTER :: data                 => null()
+      AED_REAL,DIMENSION(:),POINTER :: datac   => null()
+      AED_REAL,POINTER :: zdata                => null()
+      AED_REAL,DIMENSION(:),POINTER :: zdatac  => null()
    END TYPE api_env_def_t
    !#===========================================================#!
 
@@ -1256,7 +1256,7 @@ SUBROUTINE define_zone_column(zcolm, zon)
 
             CASE ( 'taub' )        ; zcolm(av)%cell_sheet => aedZones(zon)%z_env%z_layer_stress !CAB ??? (bot)
 
-            CASE ( 'sed_zones' )   ; zcolm(av)%cell => aedZones(:)%z_env%z_sed_zones; zone_var = av
+            CASE ( 'sed_zones' )   ; zcolm(av)%cell => aedZones(:)%z_env%z_sed_zones;
             CASE ( 'sed_zone' )    ; zcolm(av)%cell_sheet => aedZones(zon)%z_env%z_sed_zone; zone_var = av
             CASE ( 'material' )    ; zcolm(av)%cell_sheet => aedZones(zon)%z_env%z_mat_id
 
@@ -1332,7 +1332,7 @@ SUBROUTINE aed_run_model(nCols, nLevs, doSurface)
       ELSE
          dir = 1  ; hi_idx = top ; lo_idx = bot
       ENDIF
-      
+
       d = 0; sd = 0
       DO i=1,n_aed_vars
          IF ( aed_get_var(i, tv) ) THEN
@@ -1349,10 +1349,9 @@ SUBROUTINE aed_run_model(nCols, nLevs, doSurface)
                   ENDIF
                ENDIF
             ENDIF
-        ENDIF
-    ENDDO
-      
-            
+         ENDIF
+      ENDDO
+
       IF (.NOT. data(col)%active) THEN
          CALL aed_calculate_dry(all_cols(:,col), bot);
          CALL aed_calculate_riparian(all_cols(:,col), bot, zero_);
@@ -1373,6 +1372,7 @@ SUBROUTINE aed_run_model(nCols, nLevs, doSurface)
          CALL aed_run_column(all_cols(:,col), col, nLevs, doSurface)
       ENDIF
    ENDDO
+   reinited = .TRUE.
 
 !-------------------------------------------------------------------------------
 CONTAINS
@@ -1484,8 +1484,8 @@ CONTAINS
          CALL calculate_fluxes(icolm, col, nlev, doSurface)
 
          !# Update the water column layers
-         data(col)%cc(:, lo_idx:hi_idx) = data(col)%cc(:, lo_idx:hi_idx) + &
-                                           dt_eff*flux_pel(:, lo_idx:hi_idx)
+         data(col)%cc(1:n_vars, lo_idx:hi_idx) = data(col)%cc(1:n_vars, lo_idx:hi_idx) + &
+                                           dt_eff*flux_pel(1:n_vars, lo_idx:hi_idx)
 
          !# Now update benthic variables, depending on whether zones are simulated
          IF ( benthic_mode > 1 ) THEN
@@ -1610,10 +1610,10 @@ CONTAINS
       INTEGER, INTENT(in) :: col, nlev, bot
    !
    !LOCALS
-      INTEGER :: lev,zon,v,av,sv,sd
+      INTEGER  :: lev,zon,v,av,sv,sd
       AED_REAL :: scale
       AED_REAL :: localrainl, localshade, localdrag
-      LOGICAL :: splitZone
+      LOGICAL  :: splitZone
       TYPE(aed_variable_t),POINTER :: tvar
       TYPE(aed_column_t),DIMENSION(:),POINTER :: column_sed    !# (n_aed_vars)
       INTEGER :: layer_map(nlev), zlev
@@ -1628,7 +1628,6 @@ CONTAINS
          !# model configurations where mass balance of benthic variables is required.
 
          !# Calculate temporal derivatives due to exchanges at the sediment/water interface
-         IF ( zone_var >= 1 ) icolm(zone_var)%cell_sheet => aedZones(1)%z_env%z_sed_zones
          CALL aed_calculate_benthic(icolm, bot)
 
          !# Limit flux out of bottom layers to concentration of that layer
@@ -1647,7 +1646,6 @@ CONTAINS
          !# model configurations where mass balance of benthic variables is required.
 
          !# Calculate temporal derivatives due to exchanges at the sediment/water interface
-         IF ( zone_var >= 1 ) icolm(zone_var)%cell_sheet => aedZones(1)%z_env%z_sed_zones
          CALL aed_calculate_benthic(icolm, bot)
 
          !# Limit flux out of bottom layers to concentration of that layer
@@ -1858,20 +1856,18 @@ CONTAINS
          ENDDO
          CALL aed_calculate_column(icolm, layer_map)
 
-         IF ( do_zone_averaging ) THEN
+         IF ( do_zone_averaging ) &
             flux_pel(:,nlev) = flux_pel(:,nlev) + flux_pel_z(:, bot) !/h(nlev)
-            
-            !# Calculate temporal derivatives due to benthic exchange processes.
-            CALL aed_calculate_benthic(icolm, bot, .FALSE.)
-         ELSE
-            CALL aed_calculate_benthic(icolm, bot)
-         ENDIF
-         
+
+         !# Calculate temporal derivatives due to benthic exchange processes.
+        !CALL aed_calculate_benthic(icolm, bot, .FALSE.)
+         CALL aed_calculate_benthic(icolm, bot)
+
          !# Distribute bottom flux into pelagic over bottom box (i.e., divide by layer height).
          flux_pel(:,bot) = flux_pel(:,bot)/data(col)%lheights(bot)
-         
+
       ENDIF
-      
+
       !# SURFACE FLUXES
       !# Calculate temporal derivatives due to air-water exchange.
       IF (doSurface) THEN !# no surface exchange under ice cover
@@ -1884,7 +1880,6 @@ CONTAINS
 
       !# WATER CELL KINETICS
       !# Add pelagic sink and source terms in cells of all depth levels.
-    ! DO lev=bot, top, dir
       DO lev=top, bot, -dir
          CALL aed_calculate(icolm, lev)
       ENDDO

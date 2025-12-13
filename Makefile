@@ -100,7 +100,7 @@ ${libdir}/${APILIB}.${so_ext}: ${libdir}/${APILIB}.a
 	ln -sf ${APILIB}.${so_ext}.${SOVERS}.${VERS} $@
 	ln -sf ${APILIB}.${so_ext}.${SOVERS}.${VERS} $@.${SOVERS}
 
-${libdir}/$(APILIB).a: ${objdir} ${moddir} ${libdir} ${OBJS} ${LIBS} # ${objdir}/aed_external.o
-	ar rv $@ ${OBJS} ${LIBS} # ${objdir}/aed_external.o
+${libdir}/$(APILIB).a: ${objdir} ${moddir} ${libdir} ${OBJS} ${LIBS}
+	ar rv $@ ${OBJS} ${LIBS}
 	ranlib $@
 
