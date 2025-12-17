@@ -49,19 +49,16 @@ MODULE aed_api
 !
 !-------------------------------------------------------------------------------
 !
-   PUBLIC aed_configure_models,  &
-          aed_coupling_t,        &
-          aed_set_coupling,      &
-          aed_env_t,             &
-          aed_set_model_env,     &
-          aed_data_t,            &
-          aed_set_model_data,    &
-          aed_check_model_setup, &
-          aed_mobility_fn_t,     &
-          aed_set_mobility_fn,   &
-          aed_run_model,         &
-          aed_var_index,         &
-          aed_clean_model
+   PUBLIC aed_set_coupling,       aed_coupling_t,        &
+          aed_set_model_env,      aed_env_t,             &
+          aed_configure_models,                          &
+          aed_set_model_data,     aed_data_t,            &
+          aed_check_model_setup,                         &
+          aed_set_mobility_fn,    aed_mobility_fn_t,     &
+          aed_run_model,                                 &
+          aed_clean_model,                               &
+          aed_var_index
+
 
    !#===========================================================#!
    TYPE AED_DPTR
@@ -496,7 +493,8 @@ END SUBROUTINE aed_show_vars
 
 
 !###############################################################################
-INTEGER FUNCTION aed_configure_models(fname, NumWQ_Vars, NumWQ_Ben, NumWQ_Diag, NumWQ_DiagS, NumPTM_Vars)
+INTEGER FUNCTION aed_configure_models(fname, NumWQ_Vars, NumWQ_Ben,            &
+                                    NumWQ_Diag, NumWQ_DiagS, NumPTM_Vars, quiet)
 !-------------------------------------------------------------------------------
 ! Initializes the AED-API driver by reading settings from "fname"
 !-------------------------------------------------------------------------------
@@ -505,9 +503,11 @@ INTEGER FUNCTION aed_configure_models(fname, NumWQ_Vars, NumWQ_Ben, NumWQ_Diag, 
    INTEGER,INTENT(out) :: NumWQ_Vars, NumWQ_Ben
    INTEGER,INTENT(out) :: NumWQ_Diag, NumWQ_DiagS
    INTEGER,OPTIONAL,INTENT(out) :: NumPTM_Vars
+   LOGICAL,OPTIONAL,INTENT(in) :: quiet
 !
 !LOCALS
    INTEGER :: status, i, namlst
+   LOGICAL :: loud = .TRUE.
 
 #if DEBUG
    TYPE(aed_variable_t),POINTER :: tvar
@@ -536,16 +536,18 @@ INTEGER FUNCTION aed_configure_models(fname, NumWQ_Vars, NumWQ_Ben, NumWQ_Diag, 
 # endif
 #endif
 
-   print *,'    libaed enabled.... aed_configure_models processing: ', TRIM(fname)
+   IF ( PRESENT(quiet) ) loud = .NOT.quiet
+
+   IF (loud) print *,'    libaed enabled.... aed_configure_models processing: ', TRIM(fname)
    namlst = find_free_lun()
 
-   print*,'     ---------- AED API config : start ----------'
+   IF (loud) print*,'     ---------- AED API config : start ----------'
 
 !  IF ( aed_init_core('.') /= 0 ) STOP "     ERROR: Initialisation of aed_core failed"
-   CALL aed_print_version
+   IF (loud) CALL aed_print_version
 
    !# Create model tree
-   print *,"     Processing aed_models config from ",TRIM(fname)
+   IF (loud) print *,"     Processing aed_models config from ",TRIM(fname)
    OPEN(namlst,file=fname,action='read',status='old',iostat=status)
    IF ( status /= 0 ) CALL STOPIT("Cannot open file " // TRIM(fname))
 
@@ -563,9 +565,13 @@ INTEGER FUNCTION aed_configure_models(fname, NumWQ_Vars, NumWQ_Ben, NumWQ_Diag, 
 
    !# should be finished with this file
    CLOSE(namlst)
-   print *,"      ... nml file parsing completed."
+   IF (loud) print *,"      ... nml file parsing completed."
 
-   n_aed_vars = aed_core_status(n_vars, n_vars_ben, n_vars_diag, n_vars_diag_sheet, n_ptm_vars)
+!  IF ( PRESENT(quiet) ) THEN
+      n_aed_vars = aed_core_status(n_vars, n_vars_ben, n_vars_diag, n_vars_diag_sheet, n_ptm_vars, quiet)
+!  ELSE
+!     n_aed_vars = aed_core_status(n_vars, n_vars_ben, n_vars_diag, n_vars_diag_sheet, n_ptm_vars)
+!  ENDIF
 
 #if DEBUG
    DO i=1,n_aed_vars
@@ -577,11 +583,13 @@ INTEGER FUNCTION aed_configure_models(fname, NumWQ_Vars, NumWQ_Ben, NumWQ_Diag, 
    ENDDO
 #endif
 
-   print "(/,5X,'AED : MaxLayers   = ',I4)",MaxLayers
+   IF ( loud ) THEN
+      print "(/,5X,'AED : MaxLayers   = ',I4)",MaxLayers
 
-   print "(/,5X,'AED : n_aed_vars  = ',I4,' ; n_vars            = ',I4)",n_aed_vars,n_vars
-   print "(  5X,'AED : n_vars_ben  = ',I4,' ; n_ptm_vars        = ',I4)",n_vars_ben,n_ptm_vars
-   print "(  5X,'AED : n_vars_diag = ',I4,' ; n_vars_diag_sheet = ',I4,/)",n_vars_diag,n_vars_diag_sheet
+      print "(/,5X,'AED : n_aed_vars  = ',I4,' ; n_vars            = ',I4)",n_aed_vars,n_vars
+      print "(  5X,'AED : n_vars_ben  = ',I4,' ; n_ptm_vars        = ',I4)",n_vars_ben,n_ptm_vars
+      print "(  5X,'AED : n_vars_diag = ',I4,' ; n_vars_diag_sheet = ',I4,/)",n_vars_diag,n_vars_diag_sheet
+   ENDIF
 
    !# names = grab the names from info
    ALLOCATE(names(n_vars),stat=status)
@@ -593,9 +601,9 @@ INTEGER FUNCTION aed_configure_models(fname, NumWQ_Vars, NumWQ_Ben, NumWQ_Diag, 
    NumWQ_Ben   = n_vars_ben
    NumWQ_Diag  = n_vars_diag
    NumWQ_DiagS = n_vars_diag_sheet
-   IF (PRESENT(NumPTM_Vars)) NumPTM_Vars = n_ptm_vars
+   IF ( PRESENT(NumPTM_Vars) ) NumPTM_Vars = n_ptm_vars
 
-   print*,'     ----------  AED API config : end  ----------'
+   IF ( loud) print*,'     ----------  AED API config : end  ----------'
 
    aed_configure_models = n_aed_vars
 END FUNCTION aed_configure_models
@@ -1319,7 +1327,7 @@ SUBROUTINE aed_run_model(nCols, nLevs, doSurface)
    !----------------------------------------------------------------------------
    !# reset effective time/step
    dt_eff = timestep/FLOAT(split_factor)
-   
+
    IF (do_particle_bgc) CALL Particles(nLevs)
 
    !----------------------------------------------------------------------------
@@ -1842,8 +1850,8 @@ CONTAINS
       !# WATER COLUMN UPDATING
       !# Now do the general calculation all flux terms for rhs in mass/m3/s
       !# Includes (i) benthic flux, (ii) surface exchange and (ii) kinetic updates in each cell
-      !# as calculated by glm    
-      
+      !# as calculated by glm
+
       !# BENTHIC FLUXES
       IF ( glm_style_zones ) THEN
          CALL glm_benthics(icolm, col, nlev, bot)
@@ -1865,7 +1873,6 @@ CONTAINS
 
          !# Distribute bottom flux into pelagic over bottom box (i.e., divide by layer height).
          flux_pel(:,bot) = flux_pel(:,bot)/data(col)%lheights(bot)
-
       ENDIF
 
       !# SURFACE FLUXES
@@ -1874,7 +1881,6 @@ CONTAINS
          CALL aed_calculate_surface(icolm, top)
 
          !# Distribute the fluxes into pelagic surface layer
-
          flux_pel(:, top) = flux_pel(:, top) + flux_atm(:)/data(col)%dz(top)
       ENDIF
 

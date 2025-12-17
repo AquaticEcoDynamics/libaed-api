@@ -13,7 +13,7 @@
 !#                                                                             #
 !# Copyright 2024-2025 - The University of Western Australia                   #
 !#                                                                             #
-!#  This file is part of libaed (Library for AquaticEco Dynamics)              #               
+!#  This file is part of libaed (Library for AquaticEco Dynamics)              #
 !#                                                                             #
 !#  AED is free software: you can redistribute it and/or modify                #
 !#  it under the terms of the GNU General Public License as published by       #
@@ -152,12 +152,12 @@ SUBROUTINE aed_ptm_init(ng,np,parts,n_ptm_vars_,n_cells)
    DO av=1,n_aed_vars_
       IF ( .NOT.  aed_get_var(av, tvar) ) STOP "     ERROR getting variable info"
       IF ( tvar%var_type == V_PARTICLE ) THEN  !# ptm variable
-          pv = pv + 1 
+          pv = pv + 1
 
-         !print *,'PTM',pv,n_ptm_env,tvar%initial 
+         !print *,'PTM',pv,n_ptm_env,tvar%initial
           ptm_state(:,:,pv) = tvar%initial !# Note this is all particles, regardless of status
                                            !#    (ptm_env(:,:,n_ptm_env+1:n_ptm_env+n_ptm_vars))
-          ptm_env(:,:,n_ptm_env+pv) = tvar%initial 
+          ptm_env(:,:,n_ptm_env+pv) = tvar%initial
       ENDIF
    ENDDO
 
@@ -168,14 +168,14 @@ SUBROUTINE aed_ptm_init(ng,np,parts,n_ptm_vars_,n_cells)
          ! Point single particle object to the global particle data structure
          ptm(prt)%ptm_istat => ptm_istat(grp,prt,:)
          ptm(prt)%ptm_env   => ptm_env(grp,prt,1:n_ptm_env)
-         ptm(prt)%ptm_state => ptm_env(grp,prt,n_ptm_env+1:n_ptm_vars)    !ptm_state(grp,prt,:) 
+         ptm(prt)%ptm_state => ptm_env(grp,prt,n_ptm_env+1:n_ptm_vars)    !ptm_state(grp,prt,:)
          ptm(prt)%ptm_diag  => ptm_diag(grp,prt,:)
-     ENDDO 
+     ENDDO
    ENDDO !end particle loop
 
    ppid = aed_n_particles*aed_n_groups
 
-   CALL aed_initialize_particle(ppid,ptm) 
+   CALL aed_initialize_particle(ppid,ptm)
    DEALLOCATE(ptm)
 
    ! !TESTS
@@ -195,7 +195,7 @@ SUBROUTINE aed_ptm_init(ng,np,parts,n_ptm_vars_,n_cells)
    !
    !
    !!print*,"allocating all_parts with ", ubound(temp,1), " cells"
-   ALLOCATE(all_particles(n_cells))   
+   ALLOCATE(all_particles(n_cells))
 END SUBROUTINE aed_ptm_init
 !+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 
@@ -203,7 +203,7 @@ END SUBROUTINE aed_ptm_init
 !###############################################################################
 SUBROUTINE Particles(n_cells)
 !-------------------------------------------------------------------------------
-! Calculate biogeochemical transformations on particles 
+! Calculate biogeochemical transformations on particles
 !-------------------------------------------------------------------------------
 !ARGUMENTS
 !   TYPE (aed_column_t), INTENT(inout) :: column(:)
@@ -220,7 +220,7 @@ SUBROUTINE Particles(n_cells)
    TYPE (aed_ptm_t) :: ptm
 !
 !-------------------------------------------------------------------------------
- 
+
 !BEGIN
    IF (aed_n_groups == 0 .OR. aed_n_particles == 0) RETURN
    zz = zero_
@@ -301,7 +301,7 @@ END SUBROUTINE Particles
 SUBROUTINE aed_calculate_particles(icolm, col, nlev)
 !-------------------------------------------------------------------------------
 !
-! Calculate biogeochemical transformations on particles 
+! Calculate biogeochemical transformations on particles
 !
 !-------------------------------------------------------------------------------
 !ARGUMENTS
@@ -318,7 +318,7 @@ SUBROUTINE aed_calculate_particles(icolm, col, nlev)
    TYPE(partgroup_cell), POINTER :: layer_particles
 !
 !-------------------------------------------------------------------------------
- 
+
 !BEGIN
    IF (aed_n_groups == 0 .OR. aed_n_particles == 0) RETURN
 
@@ -326,8 +326,8 @@ SUBROUTINE aed_calculate_particles(icolm, col, nlev)
 !  ENDDO
 
    DO lev=1,nlev
-      layer_particles => all_particles(lev)   
-      
+      layer_particles => all_particles(lev)
+
       !print *, "ptm", lev, layer_particles%count
       IF (layer_particles%count == 0) CYCLE
 
@@ -344,13 +344,13 @@ SUBROUTINE aed_calculate_particles(icolm, col, nlev)
          ! Point single particle object to the global particle data structure
          ptm(pt)%ptm_istat => ptm_istat(grp,prt,:)
          ptm(pt)%ptm_env   => ptm_env(grp,prt,1:n_ptm_env)
-         ptm(pt)%ptm_state => ptm_env(grp,prt,n_ptm_env+1:n_ptm_vars)    !ptm_state(grp,prt,:) 
+         ptm(pt)%ptm_state => ptm_env(grp,prt,n_ptm_env+1:n_ptm_vars)    !ptm_state(grp,prt,:)
          ptm(pt)%ptm_diag  => ptm_diag(grp,prt,:)
 
          !print *,'ptm_istat(grp,prt,STAT)',ptm_istat(grp,prt,STAT), ptm%ptm_istat
       ENDDO !end particle loop
-      ppid = layer_particles%count          
-      
+      ppid = layer_particles%count
+
       ! Pass through the particle to AED modules, if its active
       !IF ( ptm_istat(grp,prt,STAT) >= 0 ) THEN
          CALL aed_particle_bgc(icolm,lev,ppid,p=ptm) ! Note: ppid getting incremeted in here
@@ -365,7 +365,7 @@ END SUBROUTINE aed_calculate_particles
 SUBROUTINE Particles_zz(column, count, parts)
 !-------------------------------------------------------------------------------
 !
-! Calculate biogeochemical transformations on particles 
+! Calculate biogeochemical transformations on particles
 !
 !-------------------------------------------------------------------------------
 !ARGUMENTS
@@ -381,7 +381,7 @@ SUBROUTINE Particles_zz(column, count, parts)
    AED_REAL :: dt = 3600
 !
 !-------------------------------------------------------------------------------
- 
+
 !BEGIN
    IF (.NOT. ASSOCIATED(particle_groups) .OR. aed_n_groups == 0) RETURN
    zz = zero_
