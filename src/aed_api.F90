@@ -49,19 +49,16 @@ MODULE aed_api
 !
 !-------------------------------------------------------------------------------
 !
-   PUBLIC aed_configure_models,  &
-          aed_coupling_t,        &
-          aed_set_coupling,      &
-          aed_env_t,             &
-          aed_set_model_env,     &
-          aed_data_t,            &
-          aed_set_model_data,    &
-          aed_check_model_setup, &
-          aed_mobility_fn_t,     &
-          aed_set_mobility_fn,   &
-          aed_run_model,         &
-          aed_var_index,         &
-          aed_clean_model
+   PUBLIC aed_set_coupling,       aed_coupling_t,        &
+          aed_set_model_env,      aed_env_t,             &
+          aed_configure_models,                          &
+          aed_set_model_data,     aed_data_t,            &
+          aed_check_model_setup,                         &
+          aed_set_mobility_fn,    aed_mobility_fn_t,     &
+          aed_run_model,                                 &
+          aed_clean_model,                               &
+          aed_var_index
+
 
    !#===========================================================#!
    TYPE AED_DPTR
@@ -73,15 +70,18 @@ MODULE aed_api
    !* A structure to pass coupling configuration values to AED  *!
    !*-----------------------------------------------------------*!
    TYPE aed_coupling_t
-      LOGICAL  :: mobility_off
-      LOGICAL  :: bioshade_feedback
-      LOGICAL  :: repair_state
-      LOGICAL  :: link_rain_loss
-      LOGICAL  :: link_solar_shade
-      LOGICAL  :: link_bottom_drag
-      LOGICAL  :: link_ext_par
-      LOGICAL  :: do_particle_bgc
-      LOGICAL  :: glm_style_zones = .FALSE.
+
+      LOGICAL  :: mobility_off      = .FALSE.
+      LOGICAL  :: bioshade_feedback = .FALSE.
+      LOGICAL  :: repair_state      = .FALSE.
+      LOGICAL  :: link_rain_loss    = .FALSE.
+      LOGICAL  :: link_solar_shade  = .FALSE.
+      LOGICAL  :: link_bottom_drag  = .FALSE.
+      LOGICAL  :: link_ext_par		= .FALSE.
+      LOGICAL  :: ice               = .FALSE.
+      LOGICAL  :: do_particle_bgc   = .FALSE.
+      LOGICAL  :: glm_style_zones   = .FALSE.
+
 
       INTEGER  :: split_factor = 1
       INTEGER  :: benthic_mode = 1
@@ -287,11 +287,11 @@ MODULE aed_api
    !* A structure defining anviromental variable.               *!
    !*-----------------------------------------------------------*!
    TYPE api_env_def_t
-      TYPE(aed_variable_t),POINTER :: tvar
-      AED_REAL,POINTER :: data      => null()
-      AED_REAL,DIMENSION(:),POINTER :: datac => null()
-      AED_REAL,POINTER :: zdata      => null()
-      AED_REAL,DIMENSION(:),POINTER :: zdatac => null()
+      TYPE(aed_variable_t),POINTER :: tvar     => null()
+      AED_REAL,POINTER :: data                 => null()
+      AED_REAL,DIMENSION(:),POINTER :: datac   => null()
+      AED_REAL,POINTER :: zdata                => null()
+      AED_REAL,DIMENSION(:),POINTER :: zdatac  => null()
    END TYPE api_env_def_t
    !#===========================================================#!
 
@@ -496,7 +496,8 @@ END SUBROUTINE aed_show_vars
 
 
 !###############################################################################
-INTEGER FUNCTION aed_configure_models(fname, NumWQ_Vars, NumWQ_Ben, NumWQ_Diag, NumWQ_DiagS, NumPTM_Vars)
+INTEGER FUNCTION aed_configure_models(fname, NumWQ_Vars, NumWQ_Ben,            &
+                                    NumWQ_Diag, NumWQ_DiagS, NumPTM_Vars, quiet)
 !-------------------------------------------------------------------------------
 ! Initializes the AED-API driver by reading settings from "fname"
 !-------------------------------------------------------------------------------
@@ -505,9 +506,11 @@ INTEGER FUNCTION aed_configure_models(fname, NumWQ_Vars, NumWQ_Ben, NumWQ_Diag, 
    INTEGER,INTENT(out) :: NumWQ_Vars, NumWQ_Ben
    INTEGER,INTENT(out) :: NumWQ_Diag, NumWQ_DiagS
    INTEGER,OPTIONAL,INTENT(out) :: NumPTM_Vars
+   LOGICAL,OPTIONAL,INTENT(in) :: quiet
 !
 !LOCALS
    INTEGER :: status, i, namlst
+   LOGICAL :: loud = .TRUE.
 
 #if DEBUG
    TYPE(aed_variable_t),POINTER :: tvar
@@ -536,16 +539,18 @@ INTEGER FUNCTION aed_configure_models(fname, NumWQ_Vars, NumWQ_Ben, NumWQ_Diag, 
 # endif
 #endif
 
-   print *,'    libaed enabled.... aed_configure_models processing: ', TRIM(fname)
+   IF ( PRESENT(quiet) ) loud = .NOT.quiet
+
+   IF (loud) print *,'    libaed enabled.... aed_configure_models processing: ', TRIM(fname)
    namlst = find_free_lun()
 
-   print*,'     ---------- AED API config : start ----------'
+   IF (loud) print*,'     ---------- AED API config : start ----------'
 
 !  IF ( aed_init_core('.') /= 0 ) STOP "     ERROR: Initialisation of aed_core failed"
-   CALL aed_print_version
+   IF (loud) CALL aed_print_version
 
    !# Create model tree
-   print *,"     Processing aed_models config from ",TRIM(fname)
+   IF (loud) print *,"     Processing aed_models config from ",TRIM(fname)
    OPEN(namlst,file=fname,action='read',status='old',iostat=status)
    IF ( status /= 0 ) CALL STOPIT("Cannot open file " // TRIM(fname))
 
@@ -563,9 +568,13 @@ INTEGER FUNCTION aed_configure_models(fname, NumWQ_Vars, NumWQ_Ben, NumWQ_Diag, 
 
    !# should be finished with this file
    CLOSE(namlst)
-   print *,"      ... nml file parsing completed."
+   IF (loud) print *,"      ... nml file parsing completed."
 
-   n_aed_vars = aed_core_status(n_vars, n_vars_ben, n_vars_diag, n_vars_diag_sheet, n_ptm_vars)
+!  IF ( PRESENT(quiet) ) THEN
+      n_aed_vars = aed_core_status(n_vars, n_vars_ben, n_vars_diag, n_vars_diag_sheet, n_ptm_vars, quiet)
+!  ELSE
+!     n_aed_vars = aed_core_status(n_vars, n_vars_ben, n_vars_diag, n_vars_diag_sheet, n_ptm_vars)
+!  ENDIF
 
 #if DEBUG
    DO i=1,n_aed_vars
@@ -577,11 +586,13 @@ INTEGER FUNCTION aed_configure_models(fname, NumWQ_Vars, NumWQ_Ben, NumWQ_Diag, 
    ENDDO
 #endif
 
-   print "(/,5X,'AED : MaxLayers   = ',I4)",MaxLayers
+   IF ( loud ) THEN
+      print "(/,5X,'AED : MaxLayers   = ',I4)",MaxLayers
 
-   print "(/,5X,'AED : n_aed_vars  = ',I4,' ; n_vars            = ',I4)",n_aed_vars,n_vars
-   print "(  5X,'AED : n_vars_ben  = ',I4,' ; n_ptm_vars        = ',I4)",n_vars_ben,n_ptm_vars
-   print "(  5X,'AED : n_vars_diag = ',I4,' ; n_vars_diag_sheet = ',I4,/)",n_vars_diag,n_vars_diag_sheet
+      print "(/,5X,'AED : n_aed_vars  = ',I4,' ; n_vars            = ',I4)",n_aed_vars,n_vars
+      print "(  5X,'AED : n_vars_ben  = ',I4,' ; n_ptm_vars        = ',I4)",n_vars_ben,n_ptm_vars
+      print "(  5X,'AED : n_vars_diag = ',I4,' ; n_vars_diag_sheet = ',I4,/)",n_vars_diag,n_vars_diag_sheet
+   ENDIF
 
    !# names = grab the names from info
    ALLOCATE(names(n_vars),stat=status)
@@ -593,9 +604,9 @@ INTEGER FUNCTION aed_configure_models(fname, NumWQ_Vars, NumWQ_Ben, NumWQ_Diag, 
    NumWQ_Ben   = n_vars_ben
    NumWQ_Diag  = n_vars_diag
    NumWQ_DiagS = n_vars_diag_sheet
-   IF (PRESENT(NumPTM_Vars)) NumPTM_Vars = n_ptm_vars
+   IF ( PRESENT(NumPTM_Vars) ) NumPTM_Vars = n_ptm_vars
 
-   print*,'     ----------  AED API config : end  ----------'
+   IF ( loud) print*,'     ----------  AED API config : end  ----------'
 
    aed_configure_models = n_aed_vars
 END FUNCTION aed_configure_models
@@ -1261,7 +1272,7 @@ SUBROUTINE define_zone_column(zcolm, zon)
 
             CASE ( 'taub' )        ; zcolm(av)%cell_sheet => aedZones(zon)%z_env%z_layer_stress !CAB ??? (bot)
 
-            CASE ( 'sed_zones' )   ; zcolm(av)%cell => aedZones(:)%z_env%z_sed_zones; zone_var = av
+            CASE ( 'sed_zones' )   ; zcolm(av)%cell => aedZones(:)%z_env%z_sed_zones;
             CASE ( 'sed_zone' )    ; zcolm(av)%cell_sheet => aedZones(zon)%z_env%z_sed_zone; zone_var = av
             CASE ( 'material' )    ; zcolm(av)%cell_sheet => aedZones(zon)%z_env%z_mat_id
 
@@ -1324,7 +1335,7 @@ SUBROUTINE aed_run_model(nCols, nLevs, doSurface)
    !----------------------------------------------------------------------------
    !# reset effective time/step
    dt_eff = timestep/FLOAT(split_factor)
-   
+
    IF (do_particle_bgc) CALL Particles(nLevs)
 
    !----------------------------------------------------------------------------
@@ -1337,7 +1348,7 @@ SUBROUTINE aed_run_model(nCols, nLevs, doSurface)
       ELSE
          dir = 1  ; hi_idx = top ; lo_idx = bot
       ENDIF
-      
+
       d = 0; sd = 0
       DO i=1,n_aed_vars
          IF ( aed_get_var(i, tv) ) THEN
@@ -1354,10 +1365,9 @@ SUBROUTINE aed_run_model(nCols, nLevs, doSurface)
                   ENDIF
                ENDIF
             ENDIF
-        ENDIF
-    ENDDO
-      
-            
+         ENDIF
+      ENDDO
+
       IF (.NOT. data(col)%active) THEN
          CALL aed_calculate_dry(all_cols(:,col), bot);
          CALL aed_calculate_riparian(all_cols(:,col), bot, zero_);
@@ -1378,6 +1388,7 @@ SUBROUTINE aed_run_model(nCols, nLevs, doSurface)
          CALL aed_run_column(all_cols(:,col), col, nLevs, doSurface)
       ENDIF
    ENDDO
+   reinited = .TRUE.
 
 !-------------------------------------------------------------------------------
 CONTAINS
@@ -1489,8 +1500,8 @@ CONTAINS
          CALL calculate_fluxes(icolm, col, nlev, doSurface)
 
          !# Update the water column layers
-         data(col)%cc(:, lo_idx:hi_idx) = data(col)%cc(:, lo_idx:hi_idx) + &
-                                           dt_eff*flux_pel(:, lo_idx:hi_idx)
+         data(col)%cc(1:n_vars, lo_idx:hi_idx) = data(col)%cc(1:n_vars, lo_idx:hi_idx) + &
+                                           dt_eff*flux_pel(1:n_vars, lo_idx:hi_idx)
 
          !# Now update benthic variables, depending on whether zones are simulated
          IF ( benthic_mode > 1 ) THEN
@@ -1615,10 +1626,10 @@ CONTAINS
       INTEGER, INTENT(in) :: col, nlev, bot
    !
    !LOCALS
-      INTEGER :: lev,zon,v,av,sv,sd
+      INTEGER  :: lev,zon,v,av,sv,sd
       AED_REAL :: scale
       AED_REAL :: localrainl, localshade, localdrag
-      LOGICAL :: splitZone
+      LOGICAL  :: splitZone
       TYPE(aed_variable_t),POINTER :: tvar
       TYPE(aed_column_t),DIMENSION(:),POINTER :: column_sed    !# (n_aed_vars)
       INTEGER :: layer_map(nlev), zlev
@@ -1633,7 +1644,6 @@ CONTAINS
          !# model configurations where mass balance of benthic variables is required.
 
          !# Calculate temporal derivatives due to exchanges at the sediment/water interface
-         IF ( zone_var >= 1 ) icolm(zone_var)%cell_sheet => aedZones(1)%z_env%z_sed_zones
          CALL aed_calculate_benthic(icolm, bot)
 
          !# Limit flux out of bottom layers to concentration of that layer
@@ -1652,7 +1662,6 @@ CONTAINS
          !# model configurations where mass balance of benthic variables is required.
 
          !# Calculate temporal derivatives due to exchanges at the sediment/water interface
-         IF ( zone_var >= 1 ) icolm(zone_var)%cell_sheet => aedZones(1)%z_env%z_sed_zones
          CALL aed_calculate_benthic(icolm, bot)
 
          !# Limit flux out of bottom layers to concentration of that layer
@@ -1849,8 +1858,8 @@ CONTAINS
       !# WATER COLUMN UPDATING
       !# Now do the general calculation all flux terms for rhs in mass/m3/s
       !# Includes (i) benthic flux, (ii) surface exchange and (ii) kinetic updates in each cell
-      !# as calculated by glm    
-      
+      !# as calculated by glm
+
       !# BENTHIC FLUXES
       IF ( glm_style_zones ) THEN
          CALL glm_benthics(icolm, col, nlev, bot)
@@ -1863,33 +1872,28 @@ CONTAINS
          ENDDO
          CALL aed_calculate_column(icolm, layer_map)
 
-         IF ( do_zone_averaging ) THEN
+         IF ( do_zone_averaging ) &
             flux_pel(:,nlev) = flux_pel(:,nlev) + flux_pel_z(:, bot) !/h(nlev)
-            
-            !# Calculate temporal derivatives due to benthic exchange processes.
-            CALL aed_calculate_benthic(icolm, bot, .FALSE.)
-         ELSE
-            CALL aed_calculate_benthic(icolm, bot)
-         ENDIF
-         
+
+         !# Calculate temporal derivatives due to benthic exchange processes.
+        !CALL aed_calculate_benthic(icolm, bot, .FALSE.)
+         CALL aed_calculate_benthic(icolm, bot)
+
          !# Distribute bottom flux into pelagic over bottom box (i.e., divide by layer height).
          flux_pel(:,bot) = flux_pel(:,bot)/data(col)%lheights(bot)
-         
       ENDIF
-      
+
       !# SURFACE FLUXES
       !# Calculate temporal derivatives due to air-water exchange.
       IF (doSurface) THEN !# no surface exchange under ice cover
          CALL aed_calculate_surface(icolm, top)
 
          !# Distribute the fluxes into pelagic surface layer
-
          flux_pel(:, top) = flux_pel(:, top) + flux_atm(:)/data(col)%dz(top)
       ENDIF
 
       !# WATER CELL KINETICS
       !# Add pelagic sink and source terms in cells of all depth levels.
-    ! DO lev=bot, top, dir
       DO lev=top, bot, -dir
          CALL aed_calculate(icolm, lev)
       ENDDO

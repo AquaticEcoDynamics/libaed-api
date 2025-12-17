@@ -120,7 +120,7 @@ MODULE aed_zones
    END TYPE api_zone_t
    !#===========================================================#!
 
-   INTEGER :: aed_n_zones
+   INTEGER :: aed_n_zones = 0
    TYPE(api_zone_t),DIMENSION(:),ALLOCATABLE,TARGET :: aedZones
 
    !----------------------------------------------------------------------------
@@ -168,9 +168,9 @@ MODULE aed_zones
    END INTERFACE
    !----------------------------------------------------------------------------
 
-   PROCEDURE(calc_zone_areas_t),POINTER :: p_calc_zone_areas
-   PROCEDURE(copy_to_zone_t),   POINTER :: p_copy_to_zone
-   PROCEDURE(copy_from_zone_t), POINTER :: p_copy_from_zone
+   PROCEDURE(calc_zone_areas_t),POINTER :: p_calc_zone_areas => null()
+   PROCEDURE(copy_to_zone_t),   POINTER :: p_copy_to_zone    => null()
+   PROCEDURE(copy_from_zone_t), POINTER :: p_copy_from_zone  => null()
 
 CONTAINS
 
