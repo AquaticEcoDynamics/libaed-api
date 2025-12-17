@@ -79,7 +79,7 @@ MODULE aed_api
       LOGICAL  :: link_rain_loss
       LOGICAL  :: link_solar_shade
       LOGICAL  :: link_bottom_drag
-      LOGICAL  :: ice
+      LOGICAL  :: link_ext_par
       LOGICAL  :: do_particle_bgc
       LOGICAL  :: glm_style_zones = .FALSE.
 
@@ -640,6 +640,7 @@ SUBROUTINE aed_set_coupling(conf)
    link_solar_shade = conf%link_solar_shade
    link_bottom_drag = conf%link_bottom_drag
    do_particle_bgc = conf%do_particle_bgc
+   link_ext_par = conf%link_ext_par
 
    glm_style_zones = conf%glm_style_zones
 
@@ -771,19 +772,21 @@ SUBROUTINE aed_set_model_env(env, ncols, nlevs)
 !-------------------------------------------------------------------------------
 !BEGIN
    MaxLayers = nlevs
-
+   
    !# Allocate main AED column arrays
    IF (.NOT. ALLOCATED(data) ) THEN
       ALLOCATE(data(ncols),stat=status)
       IF (status /= 0) STOP 'allocate_memory(): Error allocating "data"'
    ENDIF
-
+   
+   print *, 'link_ext_par', link_ext_par
+   
    !# Check whether external light field is to be used, or allocate locally
    IF (.NOT. link_ext_par) ALLOCATE(lpar(MaxLayers,ncols))
-
+   
    !# Set effective time/step
    dt_eff = env(1)%timestep/FLOAT(split_factor)  ! was timestep/FLOAT(split_factor)
-
+   
    !# Check for "optional" environment/feedback vars that were not provided
    !  and allocate locally
    no_bathy = (.NOT.ASSOCIATED(env(1)%bathy))
@@ -792,17 +795,19 @@ SUBROUTINE aed_set_model_env(env, ncols, nlevs)
    no_sshad = (.NOT.ASSOCIATED(env(1)%solarshade))
    no_wshad = (.NOT.ASSOCIATED(env(1)%windshade))
    no_rianl = (.NOT.ASSOCIATED(env(1)%rainloss))
-
+   
    IF (no_bathy) THEN ; ALLOCATE(bathy(ncols))             ; bathy = zero_      ; ENDIF
    IF (no_biodg) THEN ; ALLOCATE(biodrag(MaxLayers,ncols)) ; biodrag = zero_    ; ENDIF
    IF (no_bioex) THEN ; ALLOCATE(bioextc(MaxLayers,ncols)) ; bioextc = zero_    ; ENDIF
    IF (no_sshad) THEN ; ALLOCATE(solarshade(ncols))        ; solarshade = zero_ ; ENDIF
    IF (no_wshad) THEN ; ALLOCATE(windshade(ncols))         ; windshade = zero_  ; ENDIF
    IF (no_rianl) THEN ; ALLOCATE(rainloss(ncols))          ; rainloss = zero_   ; ENDIF
+   
 
    !# Set local AED column data structure to point to environment vars from host
    timestep => env(1)%timestep
    yearday  => env(1)%yearday
+   
 
    DO col=1,ncols
       data(col)%n_layers     =  env(col)%n_layers
@@ -1460,7 +1465,7 @@ CONTAINS
    !----------------------------------------------------------------------------
    !BEGIN
       localext = zero_; localext_up = zero_
-
+      
       IF (benthic_mode > 1) &
          CALL p_calc_zone_areas(aedZones, aed_n_zones, data(col)%area, data(col)%lheights, nlev)
 
@@ -1473,7 +1478,7 @@ CONTAINS
          !# changes in biological state variables). Update_light is set to
          !# be inline with current aed_phyoplankton, which requires only
          !# surface par, then integrates over depth of a layer
-         CALL update_light(icolm, col, nlev)
+         call update_light(icolm, col, nlev)
 
          !# non PAR bandwidth fractions (set assuming single light extinction)
          data(col)%nir(:) = (data(col)%par(:)/par_fraction) * nir_fraction
@@ -1976,29 +1981,31 @@ CONTAINS
    !
    !LOCALS
       INTEGER :: lev
-      AED_REAL :: localext, localext_up
+      AED_REAL :: localext, localext_up, KW_2
    !
    !----------------------------------------------------------------------------
    !BEGIN
       localext = zero_; localext_up = zero_
-
+      
       ! Surface Kd
       CALL aed_light_extinction(icolm, top, localext)
-
+            
       ! Surface PAR
       data(col)%par(top) = &
-           par_fraction * data(col)%rad(top) * EXP( -(Kw+localext)*1e-6*data(col)%dz(top) )
-
+           par_fraction * data(col)%rad(top) * EXP( -(Kw_2+localext)*1e-6*data(col)%dz(top) )
+           
       ! Now set the top of subsequent layers, down to the bottom
       DO lev = (top-dir), bot, -dir
          localext_up = localext
+         
          CALL aed_light_extinction(icolm, lev, localext)
 
          data(col)%par(lev) = &
             data(col)%par(lev-dir) * EXP( -(Kw + localext_up) * data(col)%dz(lev-dir) )
 
-         IF (bioshade_feedback) data(col)%extc(lev) = Kw + localext
+         IF (bioshade_feedback) data(col)%extc(lev) = Kw_2 + localext
       ENDDO
+    
    END SUBROUTINE update_light
    !++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 
