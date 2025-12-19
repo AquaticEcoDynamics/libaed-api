@@ -1329,7 +1329,7 @@ SUBROUTINE aed_run_model(nCols, nLevs, doSurface)
    LOGICAL,INTENT(in) :: doSurface
 !
 !LOCALS
-   INTEGER :: col, top, bot, dir, hi_idx, lo_idx
+   INTEGER :: col, top, bot, dir, hi_idx, lo_idx, col_lev
    INTEGER :: d, sd, i
    LOGICAL :: first = .TRUE.
    TYPE(aed_variable_t),POINTER :: tv
@@ -1349,8 +1349,10 @@ SUBROUTINE aed_run_model(nCols, nLevs, doSurface)
       bot = data(col)%bot_idx
       IF ( bot > top ) THEN
          dir = -1 ; hi_idx = bot ; lo_idx = top
+         col_lev = hi_idx - lo_idx + 1
       ELSE
          dir = 1  ; hi_idx = top ; lo_idx = bot
+         col_lev = hi_idx - lo_idx + 1
       ENDIF
 
       d = 0; sd = 0
@@ -1382,7 +1384,8 @@ SUBROUTINE aed_run_model(nCols, nLevs, doSurface)
 
          !----------------------------------------------------------------------
          !# Pre flux integration tasks
-         CALL pre_kinetics(all_cols(:,col), col, nLevs)
+         !CALL pre_kinetics(all_cols(:,col), col, nLevs)
+         CALL pre_kinetics(all_cols(:,col), col, col_lev, hi_idx,lo_idx)
 
          IF (do_particle_bgc) &
             CALL aed_calculate_particles(all_cols(:,col), col, nLevs)
@@ -1399,11 +1402,13 @@ CONTAINS
 
 
    !############################################################################
-   SUBROUTINE pre_kinetics(icolm, col, nlev)
+   !SUBROUTINE pre_kinetics(icolm, col, nlev)
+   SUBROUTINE pre_kinetics(icolm, col, nlev, hi_idx, lo_idx)
    !----------------------------------------------------------------------------
    !ARGUMENTS
       TYPE(aed_column_t),INTENT(inout) :: icolm(:)
       INTEGER,INTENT(in) :: col, nlev
+      INTEGER,INTENT(in) :: hi_idx,lo_idx
    !
    !LOCALS
       TYPE(aed_variable_t),POINTER :: tv
@@ -1447,16 +1452,16 @@ CONTAINS
                      !# only for state_vars that are not sheet, and also non-zero ws
                      IF ( .NOT. ieee_is_nan(tv%mobility) .AND. SUM(ABS(ws(i,:)))>zero_ ) THEN
                         min_C = tv%minimum
-                        CALL doMobility(nlev, timestep, data(col)%dz, data(col)%area, &
-                                                    ws(i,:), min_C, data(col)%cc(v, :))
+                        CALL doMobility(nlev, timestep, data(col)%dz(lo_idx:hi_idx), data(col)%area(lo_idx:hi_idx), &
+                                                    ws(i,lo_idx:hi_idx), min_C, data(col)%cc(v,lo_idx:hi_idx)  )
                      ENDIF
                   ENDIF
                ENDIF
             ENDDO
          ENDIF
-      ENDIF
+      ENDIF 
 
-      DO lev = 1, nlev
+      DO lev = lo_idx,hi_idx !1, nlev
          CALL aed_equilibrate(icolm, lev)
       ENDDO
 
