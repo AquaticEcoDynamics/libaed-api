@@ -794,9 +794,11 @@ SUBROUTINE aed_set_model_env(env, ncols, nlevs)
    
    !# Check whether external light field is to be used, or allocate locally
    IF (.NOT. link_ext_par) ALLOCATE(lpar(MaxLayers,ncols))
+print *,'HIII1'
    
    !# Set effective time/step
    dt_eff = env(1)%timestep/FLOAT(split_factor)  ! was timestep/FLOAT(split_factor)
+print *,'HIII2'
    
    !# Check for "optional" environment/feedback vars that were not provided
    !  and allocate locally
@@ -819,6 +821,8 @@ SUBROUTINE aed_set_model_env(env, ncols, nlevs)
    timestep => env(1)%timestep
    yearday  => env(1)%yearday
    
+
+print *,'HIII3'
 
    DO col=1,ncols
       data(col)%n_layers     =  env(col)%n_layers
@@ -1489,7 +1493,10 @@ CONTAINS
          !# changes in biological state variables). Update_light is set to
          !# be inline with current aed_phyoplankton, which requires only
          !# surface par, then integrates over depth of a layer
-         call update_light(icolm, col, nlev)
+         
+         !call update_light(icolm, col, nlev)
+         IF (.NOT. link_ext_par) &
+           call Light(icolm, col, nlev)
 
          !# non PAR bandwidth fractions (set assuming single light extinction)
          data(col)%nir(:) = (data(col)%par(:)/par_fraction) * nir_fraction
@@ -1522,6 +1529,17 @@ CONTAINS
 
          CALL check_states(col, nlev)
       ENDDO
+
+      CALL BioExtinction(icolm, nlev, data(col)%bioextc(:)) 
+      IF (.NOT. link_ext_par) THEN
+        ! Update the extinction coefficient for local light calculations
+        data(col)%extc(:) = data(col)%bioextc(:) + Kw
+      ENDIF
+      IF (.NOT. bioshade_feedback) THEN
+        ! Disble the extinction coefficient feedback to the host
+        data(col)%bioextc(:) = zero_
+      ENDIF
+
    END SUBROUTINE aed_run_column
    !++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 
@@ -1996,7 +2014,7 @@ CONTAINS
             
       ! Surface PAR
       data(col)%par(top) = &
-           par_fraction * data(col)%rad(top) * EXP( -(Kw_2+localext)*1e-6*data(col)%dz(top) )
+           par_fraction * data(col)%rad(top) * EXP( -(0.1+localext)*1e-6*data(col)%dz(top) )
            
       ! Now set the top of subsequent layers, down to the bottom
       DO lev = (top-dir), bot, -dir
@@ -2005,13 +2023,126 @@ CONTAINS
          CALL aed_light_extinction(icolm, lev, localext)
 
          data(col)%par(lev) = &
-            data(col)%par(lev-dir) * EXP( -(Kw + localext_up) * data(col)%dz(lev-dir) )
+            data(col)%par(lev-dir) * EXP( -(0.1 + localext_up) * data(col)%dz(lev-dir) )
 
-         IF (bioshade_feedback) data(col)%extc(lev) = Kw_2 + localext
+         IF (bioshade_feedback) data(col)%bioextc(lev) = localext
+         IF (bioshade_feedback) data(col)%extc(lev) = 0.1 + localext
       ENDDO
     
    END SUBROUTINE update_light
    !++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+
+
+
+   !###############################################################################
+   SUBROUTINE Light(icolm, col, nlev)
+   !-------------------------------------------------------------------------------
+   !
+   ! Calculate photosynthetically active radiation over entire column
+   ! based on surface radiation, and background and biotic extinction.
+   !
+   !-------------------------------------------------------------------------------
+   !ARGUMENTS
+      TYPE (aed_column_t), INTENT(inout) :: icolm(:)
+      INTEGER,  INTENT(in)    :: col, nlev
+   !
+   !LOCAL VARIABLES:
+      INTEGER  :: lev
+      AED_REAL :: extc(1:nlev)
+      AED_REAL :: zz, localext
+   !
+   !-------------------------------------------------------------------------------
+   !BEGIN
+      zz = zero_
+      localext = zero_
+
+      CALL BioExtinction(icolm,nlev,extc)
+      extc = extc + Kw
+
+      localext = extc(top)
+      zz = 0.001 !0.5*h_(1)    !MH: assume top of layer
+      data(col)%par(top) = par_fraction &
+                           * data(col)%rad(top) * EXP( -(localext)*zz )
+           
+      IF (nlev <= 1) RETURN
+
+      ! Now set the top of subsequent layers, down to the bottom
+      DO lev = (top-dir), bot, -dir
+      !DO i = 2, nlev
+         localext = extc(lev)
+
+         data(col)%par(lev) = &
+            data(col)%par(lev-dir) * EXP( -(localext) * data(col)%dz(lev-dir) )
+         !!zz = zz + 0.5*h_(i)
+         !zz = h_(i)
+         !par_(i) = par_(i-1) * EXP( -(localext) * zz )
+      ENDDO
+   END SUBROUTINE Light
+   !+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+
+   !###############################################################################
+   SUBROUTINE BioExtinction(icolm,nlev,extc)
+   !-------------------------------------------------------------------------------
+   !
+   ! Calculate the specific light attenuation additions due to AED modules
+   !
+   !-------------------------------------------------------------------------------
+   !ARGUMENTS
+      TYPE (aed_column_t),INTENT(inout) :: icolm(:)
+      INTEGER,  INTENT(in)    :: nlev
+      AED_REAL, INTENT(inout) :: extc(:)
+   !
+   !LOCAL VARIABLES:
+      INTEGER :: i
+      AED_REAL :: localext
+   !
+   !-------------------------------------------------------------------------------
+   !BEGIN
+      localext = zero_
+
+      CALL aed_light_extinction(icolm, top, localext)
+      extc(top) = localext
+
+      IF (nlev <= 1) RETURN
+
+      DO i = 2, nlev
+         CALL aed_light_extinction(icolm, i, localext)
+         extc(i) = localext 
+      ENDDO
+
+END SUBROUTINE BioExtinction
+!+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+
+!###############################################################################
+SUBROUTINE BioDrag(icolm,nlev,bdrag)
+!-------------------------------------------------------------------------------
+!
+! Calculate the drag addition to be returned to the host model due to vegetation
+!
+!-------------------------------------------------------------------------------
+!ARGUMENTS
+   TYPE (aed_column_t), INTENT(inout) :: icolm(:)
+   INTEGER,  INTENT(in)    :: nlev
+   AED_REAL, INTENT(inout) :: bdrag
+!
+!LOCAL VARIABLES:
+   INTEGER :: i
+   AED_REAL :: localdrag
+!
+!-------------------------------------------------------------------------------
+!BEGIN
+   bdrag = zero_
+   localdrag = zero_
+
+   CALL aed_bio_drag(icolm, nlev, localdrag)
+
+   IF (link_bottom_drag) bdrag = localdrag
+END SUBROUTINE BioDrag
+!+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
 
 END SUBROUTINE aed_run_model
 !+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
