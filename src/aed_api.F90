@@ -70,18 +70,16 @@ MODULE aed_api
    !* A structure to pass coupling configuration values to AED  *!
    !*-----------------------------------------------------------*!
    TYPE aed_coupling_t
-
       LOGICAL  :: mobility_off      = .FALSE.
       LOGICAL  :: bioshade_feedback = .FALSE.
       LOGICAL  :: repair_state      = .FALSE.
       LOGICAL  :: link_rain_loss    = .FALSE.
       LOGICAL  :: link_solar_shade  = .FALSE.
       LOGICAL  :: link_bottom_drag  = .FALSE.
-      LOGICAL  :: link_ext_par		= .FALSE.
+      LOGICAL  :: link_ext_par      = .FALSE.
       LOGICAL  :: ice               = .FALSE.
       LOGICAL  :: do_particle_bgc   = .FALSE.
       LOGICAL  :: glm_style_zones   = .FALSE.
-
 
       INTEGER  :: split_factor = 1
       INTEGER  :: benthic_mode = 1
@@ -215,7 +213,7 @@ MODULE aed_api
       AED_REAL,POINTER                :: longitude      => null()
       AED_REAL,POINTER                :: latitude       => null()
       AED_REAL                        :: col_num
-     !INTEGER, POINTER                :: col_num        => null()
+     !INTEGER,POINTER                 :: col_num        => null()
       LOGICAL,POINTER                 :: active         => null()
 
       !# Arrays storing/pointing to surface (above water) environment
@@ -544,13 +542,13 @@ INTEGER FUNCTION aed_configure_models(fname, NumWQ_Vars, NumWQ_Ben,            &
    IF (loud) print *,'    libaed enabled.... aed_configure_models processing: ', TRIM(fname)
    namlst = find_free_lun()
 
-   IF (loud) print*,'     ---------- AED API config : start ----------'
+   IF ( loud ) print*,'     ---------- AED API config : start ----------'
 
 !  IF ( aed_init_core('.') /= 0 ) STOP "     ERROR: Initialisation of aed_core failed"
-   IF (loud) CALL aed_print_version
+   IF ( loud ) CALL aed_print_version
 
    !# Create model tree
-   IF (loud) print *,"     Processing aed_models config from ",TRIM(fname)
+   IF ( loud ) print *,"     Processing aed_models config from ",TRIM(fname)
    OPEN(namlst,file=fname,action='read',status='old',iostat=status)
    IF ( status /= 0 ) CALL STOPIT("Cannot open file " // TRIM(fname))
 
@@ -568,13 +566,9 @@ INTEGER FUNCTION aed_configure_models(fname, NumWQ_Vars, NumWQ_Ben,            &
 
    !# should be finished with this file
    CLOSE(namlst)
-   IF (loud) print *,"      ... nml file parsing completed."
+   IF ( loud ) print *,"      ... nml file parsing completed."
 
-!  IF ( PRESENT(quiet) ) THEN
-      n_aed_vars = aed_core_status(n_vars, n_vars_ben, n_vars_diag, n_vars_diag_sheet, n_ptm_vars, quiet)
-!  ELSE
-!     n_aed_vars = aed_core_status(n_vars, n_vars_ben, n_vars_diag, n_vars_diag_sheet, n_ptm_vars)
-!  ENDIF
+   n_aed_vars = aed_core_status(n_vars, n_vars_ben, n_vars_diag, n_vars_diag_sheet, n_ptm_vars, quiet)
 
 #if DEBUG
    DO i=1,n_aed_vars
@@ -606,7 +600,7 @@ INTEGER FUNCTION aed_configure_models(fname, NumWQ_Vars, NumWQ_Ben,            &
    NumWQ_DiagS = n_vars_diag_sheet
    IF ( PRESENT(NumPTM_Vars) ) NumPTM_Vars = n_ptm_vars
 
-   IF ( loud) print*,'     ----------  AED API config : end  ----------'
+   IF ( loud ) print*,'     ----------  AED API config : end  ----------'
 
    aed_configure_models = n_aed_vars
 END FUNCTION aed_configure_models
@@ -720,7 +714,7 @@ SUBROUTINE aed_set_model_data(dat, ncols, nlevs)
       data(col)%cc_diag_hz => dat(col)%cc_diag_hz
    ENDDO
 
-   CALL aed_show_vars
+!  CALL aed_show_vars
 
    !----------------------------------------------------------------------------
    !# Now set initial values
@@ -783,23 +777,23 @@ SUBROUTINE aed_set_model_env(env, ncols, nlevs)
 !-------------------------------------------------------------------------------
 !BEGIN
    MaxLayers = nlevs
-   
+
    !# Allocate main AED column arrays
    IF (.NOT. ALLOCATED(data) ) THEN
       ALLOCATE(data(ncols),stat=status)
       IF (status /= 0) STOP 'allocate_memory(): Error allocating "data"'
    ENDIF
-   
-   print *, 'link_ext_par', link_ext_par
-   
+
+!  print *, 'link_ext_par', link_ext_par
+
    !# Check whether external light field is to be used, or allocate locally
    IF (.NOT. link_ext_par) ALLOCATE(lpar(MaxLayers,ncols))
-print *,'HIII1'
-   
+!print *,'HIII1'
+
    !# Set effective time/step
    dt_eff = env(1)%timestep/FLOAT(split_factor)  ! was timestep/FLOAT(split_factor)
-print *,'HIII2'
-   
+!print *,'HIII2'
+
    !# Check for "optional" environment/feedback vars that were not provided
    !  and allocate locally
    no_bathy = (.NOT.ASSOCIATED(env(1)%bathy))
@@ -808,19 +802,19 @@ print *,'HIII2'
    no_sshad = (.NOT.ASSOCIATED(env(1)%solarshade))
    no_wshad = (.NOT.ASSOCIATED(env(1)%windshade))
    no_rianl = (.NOT.ASSOCIATED(env(1)%rainloss))
-   
+
    IF (no_bathy) THEN ; ALLOCATE(bathy(ncols))             ; bathy = zero_      ; ENDIF
    IF (no_biodg) THEN ; ALLOCATE(biodrag(MaxLayers,ncols)) ; biodrag = zero_    ; ENDIF
    IF (no_bioex) THEN ; ALLOCATE(bioextc(MaxLayers,ncols)) ; bioextc = zero_    ; ENDIF
    IF (no_sshad) THEN ; ALLOCATE(solarshade(ncols))        ; solarshade = zero_ ; ENDIF
    IF (no_wshad) THEN ; ALLOCATE(windshade(ncols))         ; windshade = zero_  ; ENDIF
    IF (no_rianl) THEN ; ALLOCATE(rainloss(ncols))          ; rainloss = zero_   ; ENDIF
-   
+
 
    !# Set local AED column data structure to point to environment vars from host
    timestep => env(1)%timestep
    yearday  => env(1)%yearday
-   
+
 
 print *,'HIII3'
 
@@ -1459,7 +1453,7 @@ CONTAINS
                ENDIF
             ENDDO
          ENDIF
-      ENDIF 
+      ENDIF
 
       DO lev = lo_idx,hi_idx !1, nlev
          CALL aed_equilibrate(icolm, lev)
@@ -1485,7 +1479,7 @@ CONTAINS
    !----------------------------------------------------------------------------
    !BEGIN
       localext = zero_; localext_up = zero_
-      
+
       IF (benthic_mode > 1) &
          CALL p_calc_zone_areas(aedZones, aed_n_zones, data(col)%area, data(col)%lheights, nlev)
 
@@ -1498,10 +1492,10 @@ CONTAINS
          !# changes in biological state variables). Update_light is set to
          !# be inline with current aed_phyoplankton, which requires only
          !# surface par, then integrates over depth of a layer
-         
-         !call update_light(icolm, col, nlev)
+
+         !CALL update_light(icolm, col, nlev)
          IF (.NOT. link_ext_par) &
-           call Light(icolm, col, nlev)
+           CALL Light(icolm, col, nlev)
 
          !# non PAR bandwidth fractions (set assuming single light extinction)
          data(col)%nir(:) = (data(col)%par(:)/par_fraction) * nir_fraction
@@ -1535,7 +1529,7 @@ CONTAINS
          CALL check_states(col, nlev)
       ENDDO
 
-      CALL BioExtinction(icolm, nlev, data(col)%bioextc(:)) 
+      CALL BioExtinction(icolm, nlev, data(col)%bioextc(:))
       IF (.NOT. link_ext_par) THEN
         ! Update the extinction coefficient for local light calculations
         data(col)%extc(:) = data(col)%bioextc(:) + Kw
@@ -2013,18 +2007,18 @@ CONTAINS
    !----------------------------------------------------------------------------
    !BEGIN
       localext = zero_; localext_up = zero_
-      
+
       ! Surface Kd
       CALL aed_light_extinction(icolm, top, localext)
-            
+
       ! Surface PAR
       data(col)%par(top) = &
            par_fraction * data(col)%rad(top) * EXP( -(0.1+localext)*1e-6*data(col)%dz(top) )
-           
+
       ! Now set the top of subsequent layers, down to the bottom
       DO lev = (top-dir), bot, -dir
          localext_up = localext
-         
+
          CALL aed_light_extinction(icolm, lev, localext)
 
          data(col)%par(lev) = &
@@ -2033,7 +2027,7 @@ CONTAINS
          IF (bioshade_feedback) data(col)%bioextc(lev) = localext
          IF (bioshade_feedback) data(col)%extc(lev) = 0.1 + localext
       ENDDO
-    
+
    END SUBROUTINE update_light
    !++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 
@@ -2069,7 +2063,7 @@ CONTAINS
       zz = 0.001 !0.5*h_(1)    !MH: assume top of layer
       data(col)%par(top) = par_fraction &
                            * data(col)%rad(top) * EXP( -(localext)*zz )
-           
+
       IF (nlev <= 1) RETURN
 
       ! Now set the top of subsequent layers, down to the bottom
@@ -2114,7 +2108,7 @@ CONTAINS
 
       DO i = 2, nlev
          CALL aed_light_extinction(icolm, i, localext)
-         extc(i) = localext 
+         extc(i) = localext
       ENDDO
 
 END SUBROUTINE BioExtinction
