@@ -784,15 +784,11 @@ SUBROUTINE aed_set_model_env(env, ncols, nlevs)
       IF (status /= 0) STOP 'allocate_memory(): Error allocating "data"'
    ENDIF
 
-!  print *, 'link_ext_par', link_ext_par
-
    !# Check whether external light field is to be used, or allocate locally
    IF (.NOT. link_ext_par) ALLOCATE(lpar(MaxLayers,ncols))
-!print *,'HIII1'
 
    !# Set effective time/step
    dt_eff = env(1)%timestep/FLOAT(split_factor)  ! was timestep/FLOAT(split_factor)
-!print *,'HIII2'
 
    !# Check for "optional" environment/feedback vars that were not provided
    !  and allocate locally
@@ -814,9 +810,6 @@ SUBROUTINE aed_set_model_env(env, ncols, nlevs)
    !# Set local AED column data structure to point to environment vars from host
    timestep => env(1)%timestep
    yearday  => env(1)%yearday
-
-
-print *,'HIII3'
 
    DO col=1,ncols
       data(col)%n_layers     =  env(col)%n_layers
@@ -1494,7 +1487,7 @@ CONTAINS
          !# surface par, then integrates over depth of a layer
 
          !CALL update_light(icolm, col, nlev)
-         IF (.NOT. link_ext_par) &
+         !IF (.NOT. link_ext_par) &
            CALL Light(icolm, col, nlev)
 
          !# non PAR bandwidth fractions (set assuming single light extinction)
@@ -1530,10 +1523,10 @@ CONTAINS
       ENDDO
 
       CALL BioExtinction(icolm, nlev, data(col)%bioextc(:))
-      IF (.NOT. link_ext_par) THEN
+      !IF (.NOT. link_ext_par) THEN
         ! Update the extinction coefficient for local light calculations
         data(col)%extc(:) = data(col)%bioextc(:) + Kw
-      ENDIF
+      !ENDIF
       IF (.NOT. bioshade_feedback) THEN
         ! Disble the extinction coefficient feedback to the host
         data(col)%bioextc(:) = zero_
@@ -2057,26 +2050,25 @@ CONTAINS
       localext = zero_
 
       CALL BioExtinction(icolm,nlev,extc)
+      
       extc = extc + Kw
-
+      
       localext = extc(top)
       zz = 0.001 !0.5*h_(1)    !MH: assume top of layer
       data(col)%par(top) = par_fraction &
                            * data(col)%rad(top) * EXP( -(localext)*zz )
-
+                           
       IF (nlev <= 1) RETURN
 
       ! Now set the top of subsequent layers, down to the bottom
       DO lev = (top-dir), bot, -dir
-      !DO i = 2, nlev
+            
          localext = extc(lev)
 
          data(col)%par(lev) = &
-            data(col)%par(lev-dir) * EXP( -(localext) * data(col)%dz(lev-dir) )
-         !!zz = zz + 0.5*h_(i)
-         !zz = h_(i)
-         !par_(i) = par_(i-1) * EXP( -(localext) * zz )
+            data(col)%par(lev+dir) * EXP( -(localext) * data(col)%dz(lev+dir) )
       ENDDO
+      
    END SUBROUTINE Light
    !+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 
