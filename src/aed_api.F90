@@ -1487,7 +1487,7 @@ CONTAINS
          !# surface par, then integrates over depth of a layer
 
          !CALL update_light(icolm, col, nlev)
-         !IF (.NOT. link_ext_par) &
+         IF (.NOT. link_ext_par) &
            CALL Light(icolm, col, nlev)
 
          !# non PAR bandwidth fractions (set assuming single light extinction)
@@ -1523,10 +1523,10 @@ CONTAINS
       ENDDO
 
       CALL BioExtinction(icolm, nlev, data(col)%bioextc(:))
-      !IF (.NOT. link_ext_par) THEN
+      IF (.NOT. link_ext_par) THEN
         ! Update the extinction coefficient for local light calculations
         data(col)%extc(:) = data(col)%bioextc(:) + Kw
-      !ENDIF
+      ENDIF
       IF (.NOT. bioshade_feedback) THEN
         ! Disble the extinction coefficient feedback to the host
         data(col)%bioextc(:) = zero_
