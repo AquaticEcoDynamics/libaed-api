@@ -200,12 +200,13 @@ SUBROUTINE aed_init_zones(n_zones, n_levs, z_cc, z_cc_hz, z_diag, z_diag_hz)
       aedZones(zon)%z_env%z_sed_zone = zon
       aedZones(zon)%z_env%z_sed_zones = zon
 
-      aedZones(zon)%z_cc => z_cc(:, :, zon)
+      aedZones(zon)%z_cc => z_cc(:, 1, :)
       aedZones(zon)%z_cc_hz => z_cc_hz(:, zon)
-      aedZones(zon)%z_cc_diag => z_diag(:, :, zon)
+      aedZones(zon)%z_cc_diag => z_diag(:, 1, :)
       aedZones(zon)%z_cc_diag_hz => z_diag_hz(:, zon)
 ! print*,"aedZones%z_cc(",size(aedZones(zon)%z_cc, 1),",",size(aedZones(zon)%z_cc,2),")"
    ENDDO
+   
 END SUBROUTINE aed_init_zones
 !+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 
