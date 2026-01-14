@@ -11,7 +11,7 @@
 !#                                                                             #
 !#     http://aquatic.science.uwa.edu.au/                                      #
 !#                                                                             #
-!# Copyright 2024-2025 - The University of Western Australia                   #
+!# Copyright 2024-2026 : The University of Western Australia                   #
 !#                                                                             #
 !#  This file is part of libaed (Library for Aquatic Eco Dynamics)             #
 !#                                                                             #
@@ -2050,25 +2050,25 @@ CONTAINS
       localext = zero_
 
       CALL BioExtinction(icolm,nlev,extc)
-      
+
       extc = extc + Kw
-      
+
       localext = extc(top)
       zz = 0.001 !0.5*h_(1)    !MH: assume top of layer
       data(col)%par(top) = par_fraction &
                            * data(col)%rad(top) * EXP( -(localext)*zz )
-                           
+
       IF (nlev <= 1) RETURN
 
       ! Now set the top of subsequent layers, down to the bottom
       DO lev = (top-dir), bot, -dir
-            
+
          localext = extc(lev)
 
          data(col)%par(lev) = &
             data(col)%par(lev+dir) * EXP( -(localext) * data(col)%dz(lev+dir) )
       ENDDO
-      
+
    END SUBROUTINE Light
    !+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 

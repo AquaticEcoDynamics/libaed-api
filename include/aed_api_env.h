@@ -11,7 +11,7 @@
  #                                                                             #
  #      http://aquatic.science.uwa.edu.au/                                     #
  #                                                                             #
- #  Copyright 2024-2025 - The University of Western Australia                  #
+ #  Copyright 2024-2026 : The University of Western Australia                  #
  #                                                                             #
  #   AED is free software: you can redistribute it and/or modify               #
  #   it under the terms of the GNU General Public License as published by      #
@@ -25,11 +25,6 @@
  #                                                                             #
  #   You should have received a copy of the GNU General Public License         #
  #   along with this program.  If not, see <http://www.gnu.org/licenses/>.     #
- #                                                                             #
- #                                                                             #
- # NB - This is currently a "work-in-progress" do not rely on it's function    #
- #      declarations/constants/whatever because it will almost certainly be    #
- #      changed.                                                               #
  #                                                                             #
  *#############################################################################*/
 #ifndef _AED_API_ENV_H_

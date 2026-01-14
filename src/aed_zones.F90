@@ -11,7 +11,7 @@
 !#                                                                             #
 !#     http://aquatic.science.uwa.edu.au/                                      #
 !#                                                                             #
-!# Copyright 2024-2025 - The University of Western Australia                   #
+!# Copyright 2024-2026 - The University of Western Australia                   #
 !#                                                                             #
 !#  This file is part of libaed (Library for AquaticEco Dynamics)              #
 !#                                                                             #
@@ -206,7 +206,7 @@ SUBROUTINE aed_init_zones(n_zones, n_levs, z_cc, z_cc_hz, z_diag, z_diag_hz)
       aedZones(zon)%z_cc_diag_hz => z_diag_hz(:, zon)
 ! print*,"aedZones%z_cc(",size(aedZones(zon)%z_cc, 1),",",size(aedZones(zon)%z_cc,2),")"
    ENDDO
-   
+
 END SUBROUTINE aed_init_zones
 !+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 
