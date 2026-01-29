@@ -11,7 +11,7 @@
 !#                                                                             #
 !#     http://aquatic.science.uwa.edu.au/                                      #
 !#                                                                             #
-!# Copyright 2024-2026 : The University of Western Australia                   #
+!# Copyright 2024-2025 - The University of Western Australia                   #
 !#                                                                             #
 !#  This file is part of libaed (Library for AquaticEco Dynamics)              #
 !#                                                                             #
@@ -310,8 +310,10 @@ SUBROUTINE aed_calculate_particles(icolm, col, nlev)
 !
 !LOCAL VARIABLES:
    INTEGER :: lev, grp, prt, n, pt, NU
-   INTEGER :: ppid
+   INTEGER :: ppid, i, pid, new_prt
    AED_REAL :: dt = 3600
+   AED_REAL :: div
+   LOGICAL :: pass
 
    TYPE (aed_ptm_t), DIMENSION(:), ALLOCATABLE :: ptm
 
@@ -357,6 +359,48 @@ SUBROUTINE aed_calculate_particles(icolm, col, nlev)
       !ENDIF
       DEALLOCATE(ptm)
    ENDDO !end layer loop
+
+   i = 1
+   DO grp=1,aed_n_groups
+      DO prt=1, aed_n_particles
+         IF ( ptm_istat(grp,prt,STAT) > 0 ) THEN
+            IF(ptm_env(grp,prt,n_ptm_vars+2) > 40d12) THEN !ML eventually this number (4d12) should be a parameter
+               pass = .FALSE.
+               DO WHILE(i < aed_n_particles .AND. pass .eqv. .FALSE.)
+                  IF(ptm_istat(grp,i,STAT) == 0 .AND. ptm_istat(grp,i,FLAG) == 3) THEN
+                     pass = .TRUE.
+                     new_prt = i
+                  ENDIF
+                  i = i + 1
+               ENDDO
+            
+               IF(i < aed_n_particles) THEN
+   	  	         !first duplicate all attributes except PTID
+                  ptm_istat(grp,new_prt,:) = ptm_istat(grp,prt,STAT:FLAG)
+                  ptm_env(grp,new_prt,:) = ptm_env(grp,prt,:)
+
+                  !then split the number of cells for both old and new particles
+                  ptm_env(grp,prt,n_ptm_vars+2) = ptm_env(grp,prt,n_ptm_vars+2) / 2
+                  ptm_env(grp,new_prt,n_ptm_vars+2) = ptm_env(grp,new_prt,n_ptm_vars+2) / 2
+
+                  !then get a new PTID for new particle
+                  IF(ptm_istat(grp,new_prt,PTID) < 0) THEN
+                     ptm_istat(grp,new_prt,PTID) = new_prt;
+                  ELSE
+                     div = REAL(ptm_istat(grp,new_prt,PTID) / aed_n_particles)
+                     pid = FLOOR(div)
+                     ptm_istat(grp,new_prt,PTID) = aed_n_particles + pid*aed_n_particles + (new_prt - pid*aed_n_particles)
+                  ENDIF
+
+               ELSE
+                  print *, 'No available particles for splitting!'
+               ENDIF
+
+            ENDIF !end split query loop
+         ENDIF !end particle status loop
+      ENDDO !end particle loop
+   ENDDO !end group loop
+
 END SUBROUTINE aed_calculate_particles
 !+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 
