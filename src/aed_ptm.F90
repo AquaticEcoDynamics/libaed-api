@@ -372,6 +372,7 @@ SUBROUTINE aed_calculate_particles(icolm, col, nlev)
                      new_prt = i
                   ENDIF
                   i = i + 1
+                  IF (i >= aed_n_particles) STOP 'aed_calculate_particles(): ERROR no more particles available for splitting'
                ENDDO
             
                IF(i < aed_n_particles) THEN
@@ -391,11 +392,9 @@ SUBROUTINE aed_calculate_particles(icolm, col, nlev)
                      pid = FLOOR(div)
                      ptm_istat(grp,new_prt,PTID) = aed_n_particles + pid*aed_n_particles + (new_prt - pid*aed_n_particles)
                   ENDIF
-
                ELSE
-                  print *, 'No available particles for splitting!'
+                  STOP 'aed_calculate_particles(): ERROR no more particles available for splitting'
                ENDIF
-
             ENDIF !end split query loop
          ENDIF !end particle status loop
       ENDDO !end particle loop
