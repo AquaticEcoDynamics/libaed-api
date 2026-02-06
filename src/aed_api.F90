@@ -141,7 +141,7 @@ MODULE aed_api
       AED_REAL,POINTER              :: col_area       => null() !# col_area (sheet - area of column)
       AED_REAL,DIMENSION(:),POINTER :: height         => null() !# layer height (previously "h")
       AED_REAL,DIMENSION(:),POINTER :: depth          => null() !# layer_depth (previously "z")
-      AED_REAL,DIMENSION(:),POINTER :: area           => null() !# area :layer area
+      AED_REAL,DIMENSION(:),POINTER :: area           => null() !# area : layer area
       AED_REAL,DIMENSION(:),POINTER :: dz             => null() !# thick : layer thickness (previously "layer_ht")
 
       !# water column hydrodynamic information
@@ -413,11 +413,11 @@ MODULE aed_api
        USE ISO_C_BINDING
        CINTEGER,INTENT(in)    :: N       !# number of vertical layers
        AED_REAL,INTENT(in)    :: dt      !# time step (s)
-       AED_REAL,INTENT(in)    :: h(*)    !# layer thickness (m)
-       AED_REAL,INTENT(in)    :: A(*)    !# layer areas (m2)
-       AED_REAL,INTENT(in)    :: ww(*)   !# vertical speed (m/s)
+       AED_REAL,INTENT(in)    :: h(:)    !# layer thickness (m)
+       AED_REAL,INTENT(in)    :: A(:)    !# layer areas (m2)
+       AED_REAL,INTENT(in)    :: ww(:)   !# vertical speed (m/s)
        AED_REAL,INTENT(in)    :: min_C   !# minimum allowed cell concentration
-       AED_REAL,INTENT(inout) :: cc(*)   !# cell concentration
+       AED_REAL,INTENT(inout) :: cc(:)   !# cell concentration
     END SUBROUTINE aed_mobility_fn_t
 
   END INTERFACE
