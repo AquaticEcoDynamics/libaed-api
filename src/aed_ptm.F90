@@ -360,46 +360,22 @@ SUBROUTINE aed_calculate_particles(icolm, col, nlev)
       DEALLOCATE(ptm)
    ENDDO !end layer loop
 
-   i = 1
+   ALLOCATE(ptm(aed_n_particles*aed_n_groups))
+
    DO grp=1,aed_n_groups
-      DO prt=1, aed_n_particles
-         IF ( ptm_istat(grp,prt,STAT) > 0 ) THEN
-            IF(ptm_env(grp,prt,n_ptm_vars+2) > 40d12) THEN !ML eventually this number (4d12) should be a parameter
-               pass = .FALSE.
-               DO WHILE(i < aed_n_particles .AND. pass .eqv. .FALSE.)
-                  IF(ptm_istat(grp,i,STAT) == 0 .AND. ptm_istat(grp,i,FLAG) == 3) THEN
-                     pass = .TRUE.
-                     new_prt = i
-                  ENDIF
-                  i = i + 1
-               ENDDO
-            
-               IF(i < aed_n_particles) THEN
-   	  	         !first duplicate all attributes except PTID
-                  ptm_istat(grp,new_prt,:) = ptm_istat(grp,prt,STAT:FLAG)
-                  ptm_env(grp,new_prt,:) = ptm_env(grp,prt,:)
+     DO prt=1,aed_n_particles
+         ! Point single particle object to the global particle data structure
+         ptm(prt)%ptm_istat => ptm_istat(grp,prt,:)
+         ptm(prt)%ptm_env   => ptm_env(grp,prt,1:n_ptm_env)
+         ptm(prt)%ptm_state => ptm_env(grp,prt,n_ptm_env+1:n_ptm_vars)    !ptm_state(grp,prt,:)
+         ptm(prt)%ptm_diag  => ptm_diag(grp,prt,:)
+     ENDDO
+   ENDDO !end particle loop
 
-                  !then split the number of cells for both old and new particles
-                  ptm_env(grp,prt,n_ptm_vars+2) = ptm_env(grp,prt,n_ptm_vars+2) / 2
-                  ptm_env(grp,new_prt,n_ptm_vars+2) = ptm_env(grp,new_prt,n_ptm_vars+2) / 2
+   ppid = aed_n_particles*aed_n_groups
 
-                  !then get a new PTID for new particle
-                  IF(ptm_istat(grp,new_prt,PTID) < 0) THEN
-                     ptm_istat(grp,new_prt,PTID) = new_prt;
-                  ELSE
-                     div = REAL(ptm_istat(grp,new_prt,PTID) / aed_n_particles)
-                     pid = FLOOR(div)
-                     ptm_istat(grp,new_prt,PTID) = aed_n_particles + pid*aed_n_particles + (new_prt - pid*aed_n_particles)
-                  ENDIF
-
-               ELSE
-                  print *, 'No available particles for splitting!'
-               ENDIF
-
-            ENDIF !end split query loop
-         ENDIF !end particle status loop
-      ENDDO !end particle loop
-   ENDDO !end group loop
+   CALL aed_split_particle(ppid,ptm)
+   DEALLOCATE(ptm)
 
 END SUBROUTINE aed_calculate_particles
 !+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
