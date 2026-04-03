@@ -175,8 +175,8 @@ MODULE aed_api
 
       !# bottom sediment zone classification
       AED_REAL,DIMENSION(:),POINTER :: sed_zones      => null()  !# sedzones are an odd mix - for GLM a zone will be different at
-      AED_REAL,POINTER :: sed_zone                    => null()  !# different levels - for others a column would be all one zone
-      AED_REAL,POINTER :: mat_id                      => null()
+      AED_REAL,POINTER              :: sed_zone       => null()  !# different levels - for others a column would be all one zone
+      AED_REAL,POINTER              :: mat_id         => null()
 
       !# inforation for dry column / groundwater calculations
       AED_REAL,POINTER              :: bathy          => null()

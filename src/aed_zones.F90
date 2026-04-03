@@ -40,14 +40,14 @@ MODULE aed_zones
 
    IMPLICIT NONE
 
-   PRIVATE ! By default, make everything private
+   PRIVATE ! By default everything is private
 
    !#-----------------------------------------------------------#!
 
-   PUBLIC api_zone_t, aed_init_zones, api_set_zone_funcs
-   PUBLIC aedZones, aed_n_zones
-   PUBLIC p_calc_zone_areas, p_copy_to_zone, p_copy_from_zone
+   PUBLIC aed_init_zones, api_set_zone_funcs
+   PUBLIC api_zone_t, aedZones, aed_n_zones
    PUBLIC calc_zone_areas_t, copy_to_zone_t, copy_from_zone_t
+   PUBLIC p_calc_zone_areas, p_copy_to_zone, p_copy_from_zone
 
    !#===========================================================#!
    !# Structured type for Zones environment
