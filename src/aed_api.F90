@@ -1320,6 +1320,15 @@ SUBROUTINE aed_run_model(nCols, nLevs, doSurface)
    INTEGER :: d, sd, i
    LOGICAL :: first = .TRUE.
    TYPE(aed_variable_t),POINTER :: tv
+   !# Thread-local flux workspace (automatic arrays shadow module-scope for OMP)
+   AED_REAL,TARGET :: flux_pel(n_vars+n_vars_ben, MAX(MaxLayers, aed_n_zones))
+   AED_REAL,TARGET :: flux_ben(n_vars+n_vars_ben)
+   AED_REAL,TARGET :: flux_atm(n_vars+n_vars_ben)
+   AED_REAL,TARGET :: flux_rip(n_vars+n_vars_ben)
+   AED_REAL,TARGET :: flux_zon(n_vars+n_vars_ben, MAX(aed_n_zones,1))
+   AED_REAL :: flux_pel_pre(n_vars+n_vars_ben, MAX(MaxLayers, aed_n_zones))
+   AED_REAL :: flux_pel_z(n_vars+n_vars_ben, MAX(MaxLayers, aed_n_zones))
+   AED_REAL :: ws(n_aed_vars, MaxLayers)
 !
 !-------------------------------------------------------------------------------
 !BEGIN
@@ -1331,7 +1340,12 @@ SUBROUTINE aed_run_model(nCols, nLevs, doSurface)
 
    !----------------------------------------------------------------------------
    !# Resetting and re-initialisation tasks
+   !$OMP PARALLEL DO PRIVATE(col, top, bot, dir, hi_idx, lo_idx, col_lev,   &
+   !$OMP&   d, sd, i, tv, flux_pel, flux_ben, flux_atm, flux_rip, flux_zon,  &
+   !$OMP&   flux_pel_pre, flux_pel_z, ws) SCHEDULE(DYNAMIC)
    DO col=1, nCols
+      !# Re-point column flux pointers to thread-local arrays
+      CALL repoint_column_fluxes(all_cols(:,col))
       top = data(col)%top_idx
       bot = data(col)%bot_idx
       IF ( bot > top ) THEN
@@ -1367,21 +1381,21 @@ SUBROUTINE aed_run_model(nCols, nLevs, doSurface)
       ELSE
          CALL aed_calculate_riparian(all_cols(:,col), bot, one_);
 
-         IF ( .NOT. reinited ) CALL re_initialize(all_cols(:,col), nLevs)
+         IF ( .NOT. reinited ) CALL re_initialize(all_cols(:,col), nLevs, top, bot, dir)
 
          !----------------------------------------------------------------------
          !# Pre flux integration tasks
-         !CALL pre_kinetics(all_cols(:,col), col, nLevs)
-         CALL pre_kinetics(all_cols(:,col), col, col_lev, hi_idx,lo_idx)
+         CALL pre_kinetics(all_cols(:,col), col, col_lev, hi_idx, lo_idx, top, bot, dir)
 
          IF (do_particle_bgc) &
             CALL aed_calculate_particles(all_cols(:,col), col, nLevs)
 
          !----------------------------------------------------------------------
          !# Main time-step tasks
-         CALL aed_run_column(all_cols(:,col), col, nLevs, doSurface)
+         CALL aed_run_column(all_cols(:,col), col, nLevs, doSurface, top, bot, dir, lo_idx, hi_idx)
       ENDIF
    ENDDO
+   !$OMP END PARALLEL DO
    reinited = .TRUE.
 
 !-------------------------------------------------------------------------------
@@ -1389,13 +1403,50 @@ CONTAINS
 
 
    !############################################################################
+   SUBROUTINE repoint_column_fluxes(icolm)
+   !----------------------------------------------------------------------------
+   !# Re-point flux pointers in column to thread-local arrays
+   !----------------------------------------------------------------------------
+   !ARGUMENTS
+      TYPE(aed_column_t),INTENT(inout) :: icolm(:)
+   !
+   !LOCALS
+      INTEGER :: av, v, sv
+      TYPE(aed_variable_t),POINTER :: tvar
+   !
+   !----------------------------------------------------------------------------
+   !BEGIN
+      v = 0; sv = 0
+      DO av=1,n_aed_vars
+         IF ( .NOT. aed_get_var(av, tvar) ) CYCLE
+         IF ( tvar%var_type == V_STATE ) THEN
+            IF ( tvar%sheet ) THEN
+               sv = sv + 1
+               icolm(av)%flux_ben => flux_ben(n_vars+sv)
+               icolm(av)%flux_atm => flux_atm(n_vars+sv)
+               icolm(av)%flux_rip => flux_rip(n_vars+sv)
+            ELSE
+               v = v + 1
+               icolm(av)%flux_pel => flux_pel(v,:)
+               icolm(av)%flux_ben => flux_ben(v)
+               icolm(av)%flux_atm => flux_atm(v)
+               icolm(av)%flux_rip => flux_rip(v)
+            ENDIF
+         ENDIF
+      ENDDO
+   END SUBROUTINE repoint_column_fluxes
+   !++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+
+   !############################################################################
    !SUBROUTINE pre_kinetics(icolm, col, nlev)
-   SUBROUTINE pre_kinetics(icolm, col, nlev, hi_idx, lo_idx)
+   SUBROUTINE pre_kinetics(icolm, col, nlev, hi_idx, lo_idx, top, bot, dir)
    !----------------------------------------------------------------------------
    !ARGUMENTS
       TYPE(aed_column_t),INTENT(inout) :: icolm(:)
       INTEGER,INTENT(in) :: col, nlev
       INTEGER,INTENT(in) :: hi_idx,lo_idx
+      INTEGER,INTENT(in) :: top, bot, dir
    !
    !LOCALS
       TYPE(aed_variable_t),POINTER :: tv
@@ -1458,12 +1509,13 @@ CONTAINS
 
 
    !############################################################################
-   SUBROUTINE aed_run_column(icolm, col, nlev, doSurface)
+   SUBROUTINE aed_run_column(icolm, col, nlev, doSurface, top, bot, dir, lo_idx, hi_idx)
    !----------------------------------------------------------------------------
    !ARGUMENTS
       TYPE(aed_column_t),INTENT(inout) :: icolm(:)
       INTEGER,INTENT(in) :: col, nlev
       LOGICAL,INTENT(in) :: doSurface
+      INTEGER,INTENT(in) :: top, bot, dir, lo_idx, hi_idx
    !
    !LOCALS
       INTEGER  :: v, lev, zon, split
@@ -1486,9 +1538,9 @@ CONTAINS
          !# be inline with current aed_phyoplankton, which requires only
          !# surface par, then integrates over depth of a layer
 
-         !CALL update_light(icolm, col, nlev)
+         !CALL update_light(icolm, col, nlev, top, bot, dir)
          IF (.NOT. link_ext_par) &
-           CALL Light(icolm, col, nlev)
+           CALL Light(icolm, col, nlev, top, bot, dir)
 
          !# non PAR bandwidth fractions (set assuming single light extinction)
          data(col)%nir(:) = (data(col)%par(:)/par_fraction) * nir_fraction
@@ -1496,7 +1548,7 @@ CONTAINS
          data(col)%uvb(:) = (data(col)%par(:)/par_fraction) * uvb_fraction
 
          !# Time-integrate one biological time step
-         CALL calculate_fluxes(icolm, col, nlev, doSurface)
+         CALL calculate_fluxes(icolm, col, nlev, doSurface, top, bot, dir)
 
          !# Update the water column layers
          data(col)%cc(1:n_vars, lo_idx:hi_idx) = data(col)%cc(1:n_vars, lo_idx:hi_idx) + &
@@ -1522,7 +1574,7 @@ CONTAINS
          CALL check_states(col, nlev)
       ENDDO
 
-      CALL BioExtinction(icolm, nlev, data(col)%bioextc(:))
+      CALL BioExtinction(icolm, nlev, data(col)%bioextc(:), top)
       IF (.NOT. link_ext_par) THEN
         ! Update the extinction coefficient for local light calculations
         data(col)%extc(:) = data(col)%bioextc(:) + Kw
@@ -1561,11 +1613,12 @@ CONTAINS
 
 
    !############################################################################
-   SUBROUTINE re_initialize(icolm, nlev)
+   SUBROUTINE re_initialize(icolm, nlev, top, bot, dir)
    !----------------------------------------------------------------------------
    !ARGUMENTS
       TYPE(aed_column_t),INTENT(inout) :: icolm(:)
       INTEGER,INTENT(in) :: nlev
+      INTEGER,INTENT(in) :: top, bot, dir
    !
    !LOCALS
       INTEGER :: lev,zon,av,sv,sd
@@ -1840,7 +1893,7 @@ CONTAINS
 
 
    !############################################################################
-   SUBROUTINE calculate_fluxes(icolm, col, nlev, doSurface)
+   SUBROUTINE calculate_fluxes(icolm, col, nlev, doSurface, top, bot, dir)
    !----------------------------------------------------------------------------
    ! Checks the current values of all state variables and repairs these
    !----------------------------------------------------------------------------
@@ -1848,6 +1901,7 @@ CONTAINS
       TYPE(aed_column_t),INTENT(inout) :: icolm(:)
       INTEGER,INTENT(in) :: col, nlev
       LOGICAL,INTENT(in) :: doSurface
+      INTEGER,INTENT(in) :: top, bot, dir
    !
    !LOCALS
       INTEGER :: lev
@@ -1858,7 +1912,7 @@ CONTAINS
       flux_pel = zero_
       flux_atm = zero_
       flux_ben = zero_
-      IF ( ALLOCATED(flux_zon) ) flux_zon = zero_
+      IF ( aed_n_zones > 0 ) flux_zon = zero_
 
       flux_pel_pre = zero_
       flux_pel_z = zero_
@@ -1984,7 +2038,7 @@ CONTAINS
 
 
    !############################################################################
-   SUBROUTINE update_light(icolm, col, nlev)
+   SUBROUTINE update_light(icolm, col, nlev, top, bot, dir)
    !----------------------------------------------------------------------------
    ! Calculate photosynthetically active radiation over entire column based
    ! on surface radiation, attenuated based on background & biotic extinction
@@ -1992,6 +2046,7 @@ CONTAINS
    !ARGUMENTS
       TYPE (aed_column_t),INTENT(inout) :: icolm(:)
       INTEGER,INTENT(in) :: col, nlev
+      INTEGER,INTENT(in) :: top, bot, dir
    !
    !LOCALS
       INTEGER :: lev
@@ -2028,7 +2083,7 @@ CONTAINS
 
 
    !###############################################################################
-   SUBROUTINE Light(icolm, col, nlev)
+   SUBROUTINE Light(icolm, col, nlev, top, bot, dir)
    !-------------------------------------------------------------------------------
    !
    ! Calculate photosynthetically active radiation over entire column
@@ -2038,6 +2093,7 @@ CONTAINS
    !ARGUMENTS
       TYPE (aed_column_t), INTENT(inout) :: icolm(:)
       INTEGER,  INTENT(in)    :: col, nlev
+      INTEGER,  INTENT(in)    :: top, bot, dir
    !
    !LOCAL VARIABLES:
       INTEGER  :: lev
@@ -2049,7 +2105,7 @@ CONTAINS
       zz = zero_
       localext = zero_
 
-      CALL BioExtinction(icolm,nlev,extc)
+      CALL BioExtinction(icolm,nlev,extc,top)
 
       extc = extc + Kw
 
@@ -2074,7 +2130,7 @@ CONTAINS
 
 
    !###############################################################################
-   SUBROUTINE BioExtinction(icolm,nlev,extc)
+   SUBROUTINE BioExtinction(icolm,nlev,extc,top)
    !-------------------------------------------------------------------------------
    !
    ! Calculate the specific light attenuation additions due to AED modules
@@ -2084,6 +2140,7 @@ CONTAINS
       TYPE (aed_column_t),INTENT(inout) :: icolm(:)
       INTEGER,  INTENT(in)    :: nlev
       AED_REAL, INTENT(inout) :: extc(:)
+      INTEGER,  INTENT(in)    :: top
    !
    !LOCAL VARIABLES:
       INTEGER :: i

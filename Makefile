@@ -92,6 +92,9 @@ endif
 
 include ../libaed-water/make_rules.inc
 
+${objdir}/aed_api.o: ${srcdir}/aed_api.F90
+	$(F90) $(FFLAGS) $(OMPFLAG) -c $< -o $@
+
 ${objdir}/aed_external.o: ../libaed-water/src/aed_external.F90
 	$(F90) $(FFLAGS) $(EXTFFLAGS) $(OMPFLAG) -c $< -o $@
 
