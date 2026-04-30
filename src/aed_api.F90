@@ -855,11 +855,11 @@ SUBROUTINE aed_set_model_env(env, ncols, nlevs)
       data(col)%uva          => env(col)%uva
       data(col)%uvb          => env(col)%uvb
 
-      data(col)%tss => env(col)%tss
-      data(col)%ss1 => env(col)%ss1
-      data(col)%ss2 => env(col)%ss2
-      data(col)%ss3 => env(col)%ss3
-      data(col)%ss4 => env(col)%ss4
+      data(col)%tss          => env(col)%tss
+      data(col)%ss1          => env(col)%ss1
+      data(col)%ss2          => env(col)%ss2
+      data(col)%ss3          => env(col)%ss3
+      data(col)%ss4          => env(col)%ss4
 
       data(col)%ustar_bed    => env(col)%ustar_bed
       data(col)%wv_uorb      => env(col)%wv_uorb
@@ -871,8 +871,8 @@ SUBROUTINE aed_set_model_env(env, ncols, nlevs)
       data(col)%sed_zone     => env(col)%sed_zone
       data(col)%mat_id       => env(col)%mat_id
 
-      IF (no_bathy) THEN ; data(col)%bathy      => bathy(col)
-      ELSE ;               data(col)%bathy      => env(col)%bathy      ; ENDIF
+      IF (no_bathy) THEN ; data(col)%bathy => bathy(col)
+      ELSE ;               data(col)%bathy => env(col)%bathy ; ENDIF
 
       data(col)%datum => env(col)%datum
       data(col)%col_height => env(col)%col_height
@@ -1367,19 +1367,19 @@ SUBROUTINE aed_run_model(nCols, nLevs, doSurface)
       ELSE
          CALL aed_calculate_riparian(all_cols(:,col), bot, one_);
 
-         IF ( .NOT. reinited ) CALL re_initialize(all_cols(:,col), nLevs)
+         IF ( .NOT. reinited ) CALL re_initialize(all_cols(:,col), col_lev)
 
          !----------------------------------------------------------------------
          !# Pre flux integration tasks
-         !CALL pre_kinetics(all_cols(:,col), col, nLevs)
+         !CALL pre_kinetics(all_cols(:,col), col, col_lev)
          CALL pre_kinetics(all_cols(:,col), col, col_lev, hi_idx,lo_idx)
 
          IF (do_particle_bgc) &
-            CALL aed_calculate_particles(all_cols(:,col), col, nLevs)
+            CALL aed_calculate_particles(all_cols(:,col), col, col_lev)
 
          !----------------------------------------------------------------------
          !# Main time-step tasks
-         CALL aed_run_column(all_cols(:,col), col, nLevs, doSurface)
+         CALL aed_run_column(all_cols(:,col), col, col_lev, doSurface)
       ENDIF
    ENDDO
    reinited = .TRUE.
@@ -1488,7 +1488,7 @@ CONTAINS
 
          !CALL update_light(icolm, col, nlev)
          IF (.NOT. link_ext_par) &
-           CALL Light(icolm, col, nlev)
+            CALL Light(icolm, col, nlev)
 
          !# non PAR bandwidth fractions (set assuming single light extinction)
          data(col)%nir(:) = (data(col)%par(:)/par_fraction) * nir_fraction
@@ -1525,7 +1525,7 @@ CONTAINS
       CALL BioExtinction(icolm, nlev, data(col)%bioextc(:))
       IF (.NOT. link_ext_par) THEN
         ! Update the extinction coefficient for local light calculations
-        data(col)%extc(:) = data(col)%bioextc(:) + Kw
+        data(col)%extc(1:nlev) = data(col)%bioextc(1:nlev) + Kw
       ENDIF
       IF (.NOT. bioshade_feedback) THEN
         ! Disble the extinction coefficient feedback to the host
