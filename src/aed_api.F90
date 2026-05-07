@@ -1367,19 +1367,18 @@ SUBROUTINE aed_run_model(nCols, nLevs, doSurface)
       ELSE
          CALL aed_calculate_riparian(all_cols(:,col), bot, one_);
 
-         IF ( .NOT. reinited ) CALL re_initialize(all_cols(:,col), col_lev)
+         IF ( .NOT. reinited ) CALL re_initialize(all_cols(:,col), nLevs)
 
          !----------------------------------------------------------------------
          !# Pre flux integration tasks
-         !CALL pre_kinetics(all_cols(:,col), col, col_lev)
          CALL pre_kinetics(all_cols(:,col), col, col_lev, hi_idx,lo_idx)
 
          IF (do_particle_bgc) &
-            CALL aed_calculate_particles(all_cols(:,col), col, col_lev)
+            CALL aed_calculate_particles(all_cols(:,col), col, nLevs)
 
          !----------------------------------------------------------------------
          !# Main time-step tasks
-         CALL aed_run_column(all_cols(:,col), col, col_lev, doSurface)
+         CALL aed_run_column(all_cols(:,col), col, nLevs, doSurface)
       ENDIF
    ENDDO
    reinited = .TRUE.
@@ -1389,7 +1388,6 @@ CONTAINS
 
 
    !############################################################################
-   !SUBROUTINE pre_kinetics(icolm, col, nlev)
    SUBROUTINE pre_kinetics(icolm, col, nlev, hi_idx, lo_idx)
    !----------------------------------------------------------------------------
    !ARGUMENTS
@@ -1524,12 +1522,12 @@ CONTAINS
 
       CALL BioExtinction(icolm, nlev, data(col)%bioextc(:))
       IF (.NOT. link_ext_par) THEN
-        ! Update the extinction coefficient for local light calculations
-        data(col)%extc(1:nlev) = data(col)%bioextc(1:nlev) + Kw
+         ! Update the extinction coefficient for local light calculations
+         data(col)%extc(:) = data(col)%bioextc(:) + Kw
       ENDIF
       IF (.NOT. bioshade_feedback) THEN
-        ! Disble the extinction coefficient feedback to the host
-        data(col)%bioextc(:) = zero_
+         ! Disble the extinction coefficient feedback to the host
+         data(col)%bioextc(:) = zero_
       ENDIF
 
    END SUBROUTINE aed_run_column
