@@ -855,11 +855,11 @@ SUBROUTINE aed_set_model_env(env, ncols, nlevs)
       data(col)%uva          => env(col)%uva
       data(col)%uvb          => env(col)%uvb
 
-      data(col)%tss => env(col)%tss
-      data(col)%ss1 => env(col)%ss1
-      data(col)%ss2 => env(col)%ss2
-      data(col)%ss3 => env(col)%ss3
-      data(col)%ss4 => env(col)%ss4
+      data(col)%tss          => env(col)%tss
+      data(col)%ss1          => env(col)%ss1
+      data(col)%ss2          => env(col)%ss2
+      data(col)%ss3          => env(col)%ss3
+      data(col)%ss4          => env(col)%ss4
 
       data(col)%ustar_bed    => env(col)%ustar_bed
       data(col)%wv_uorb      => env(col)%wv_uorb
@@ -871,8 +871,8 @@ SUBROUTINE aed_set_model_env(env, ncols, nlevs)
       data(col)%sed_zone     => env(col)%sed_zone
       data(col)%mat_id       => env(col)%mat_id
 
-      IF (no_bathy) THEN ; data(col)%bathy      => bathy(col)
-      ELSE ;               data(col)%bathy      => env(col)%bathy      ; ENDIF
+      IF (no_bathy) THEN ; data(col)%bathy => bathy(col)
+      ELSE ;               data(col)%bathy => env(col)%bathy ; ENDIF
 
       data(col)%datum => env(col)%datum
       data(col)%col_height => env(col)%col_height
@@ -1367,11 +1367,10 @@ SUBROUTINE aed_run_model(nCols, nLevs, doSurface)
       ELSE
          CALL aed_calculate_riparian(all_cols(:,col), bot, one_);
 
-         IF ( .NOT. reinited ) CALL re_initialize(all_cols(:,col), nLevs)
+         IF ( .NOT. reinited ) CALL re_initialize(all_cols(:,col), col, nLevs)
 
          !----------------------------------------------------------------------
          !# Pre flux integration tasks
-         !CALL pre_kinetics(all_cols(:,col), col, nLevs)
          CALL pre_kinetics(all_cols(:,col), col, col_lev, hi_idx,lo_idx)
 
          IF (do_particle_bgc) &
@@ -1389,7 +1388,6 @@ CONTAINS
 
 
    !############################################################################
-   !SUBROUTINE pre_kinetics(icolm, col, nlev)
    SUBROUTINE pre_kinetics(icolm, col, nlev, hi_idx, lo_idx)
    !----------------------------------------------------------------------------
    !ARGUMENTS
@@ -1488,7 +1486,7 @@ CONTAINS
 
          !CALL update_light(icolm, col, nlev)
          IF (.NOT. link_ext_par) &
-           CALL Light(icolm, col, nlev)
+            CALL Light(icolm, col, nlev)
 
          !# non PAR bandwidth fractions (set assuming single light extinction)
          data(col)%nir(:) = (data(col)%par(:)/par_fraction) * nir_fraction
@@ -1524,12 +1522,12 @@ CONTAINS
 
       CALL BioExtinction(icolm, nlev, data(col)%bioextc(:))
       IF (.NOT. link_ext_par) THEN
-        ! Update the extinction coefficient for local light calculations
-        data(col)%extc(:) = data(col)%bioextc(:) + Kw
+         ! Update the extinction coefficient for local light calculations
+         data(col)%extc(:) = data(col)%bioextc(:) + Kw
       ENDIF
       IF (.NOT. bioshade_feedback) THEN
-        ! Disble the extinction coefficient feedback to the host
-        data(col)%bioextc(:) = zero_
+         ! Disble the extinction coefficient feedback to the host
+         data(col)%bioextc(:) = zero_
       ENDIF
 
    END SUBROUTINE aed_run_column
@@ -1537,10 +1535,10 @@ CONTAINS
 
 
    !############################################################################
-   SUBROUTINE aed_initialize_zone_benthic(nCols, nlev, n_aed_vars)
+   SUBROUTINE aed_initialize_zone_benthic(col, nlev, n_aed_vars)
    !----------------------------------------------------------------------------
    !ARGUMENTS
-      INTEGER,INTENT(in)   :: nCols, nlev
+      INTEGER,INTENT(in)   :: col, nlev
       INTEGER,INTENT(in)   :: n_aed_vars
    !
    !LOCALS
@@ -1561,11 +1559,11 @@ CONTAINS
 
 
    !############################################################################
-   SUBROUTINE re_initialize(icolm, nlev)
+   SUBROUTINE re_initialize(icolm, col, nlev)
    !----------------------------------------------------------------------------
    !ARGUMENTS
       TYPE(aed_column_t),INTENT(inout) :: icolm(:)
-      INTEGER,INTENT(in) :: nlev
+      INTEGER,INTENT(in) :: col, nlev
    !
    !LOCALS
       INTEGER :: lev,zon,av,sv,sd
@@ -1616,7 +1614,7 @@ CONTAINS
       ELSE
          !# assumes only GLM does the odd zoning stuff
          IF ( do_zone_averaging ) THEN
-            CALL aed_initialize_zone_benthic(nCols, nlev, n_aed_vars)
+            CALL aed_initialize_zone_benthic(col, nlev, n_aed_vars)
          ELSE
             CALL aed_initialize_benthic(icolm, 1)
          ENDIF
@@ -2025,26 +2023,24 @@ CONTAINS
    !++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 
 
-
-
-   !###############################################################################
+   !############################################################################
    SUBROUTINE Light(icolm, col, nlev)
-   !-------------------------------------------------------------------------------
+   !----------------------------------------------------------------------------
    !
    ! Calculate photosynthetically active radiation over entire column
    ! based on surface radiation, and background and biotic extinction.
    !
-   !-------------------------------------------------------------------------------
+   !----------------------------------------------------------------------------
    !ARGUMENTS
       TYPE (aed_column_t), INTENT(inout) :: icolm(:)
-      INTEGER,  INTENT(in)    :: col, nlev
+      INTEGER, INTENT(in) :: col, nlev
    !
    !LOCAL VARIABLES:
       INTEGER  :: lev
       AED_REAL :: extc(1:nlev)
       AED_REAL :: zz, localext
    !
-   !-------------------------------------------------------------------------------
+   !----------------------------------------------------------------------------
    !BEGIN
       zz = zero_
       localext = zero_
@@ -2070,16 +2066,16 @@ CONTAINS
       ENDDO
 
    END SUBROUTINE Light
-   !+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+   !++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 
 
-   !###############################################################################
+   !############################################################################
    SUBROUTINE BioExtinction(icolm,nlev,extc)
-   !-------------------------------------------------------------------------------
+   !----------------------------------------------------------------------------
    !
    ! Calculate the specific light attenuation additions due to AED modules
    !
-   !-------------------------------------------------------------------------------
+   !----------------------------------------------------------------------------
    !ARGUMENTS
       TYPE (aed_column_t),INTENT(inout) :: icolm(:)
       INTEGER,  INTENT(in)    :: nlev
@@ -2089,7 +2085,7 @@ CONTAINS
       INTEGER :: i
       AED_REAL :: localext
    !
-   !-------------------------------------------------------------------------------
+   !----------------------------------------------------------------------------
    !BEGIN
       localext = zero_
 
@@ -2103,36 +2099,36 @@ CONTAINS
          extc(i) = localext
       ENDDO
 
-END SUBROUTINE BioExtinction
-!+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+   END SUBROUTINE BioExtinction
+   !++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 
 
-!###############################################################################
-SUBROUTINE BioDrag(icolm,nlev,bdrag)
-!-------------------------------------------------------------------------------
-!
-! Calculate the drag addition to be returned to the host model due to vegetation
-!
-!-------------------------------------------------------------------------------
-!ARGUMENTS
-   TYPE (aed_column_t), INTENT(inout) :: icolm(:)
-   INTEGER,  INTENT(in)    :: nlev
-   AED_REAL, INTENT(inout) :: bdrag
-!
-!LOCAL VARIABLES:
-   INTEGER :: i
-   AED_REAL :: localdrag
-!
-!-------------------------------------------------------------------------------
-!BEGIN
-   bdrag = zero_
-   localdrag = zero_
+   !############################################################################
+   SUBROUTINE BioDrag(icolm,nlev,bdrag)
+   !----------------------------------------------------------------------------
+   !
+   ! Calculate the drag addition to be returned to the host model due to vegetation
+   !
+   !----------------------------------------------------------------------------
+   !ARGUMENTS
+      TYPE (aed_column_t), INTENT(inout) :: icolm(:)
+      INTEGER,  INTENT(in)    :: nlev
+      AED_REAL, INTENT(inout) :: bdrag
+   !
+   !LOCAL VARIABLES:
+      INTEGER :: i
+      AED_REAL :: localdrag
+   !
+   !----------------------------------------------------------------------------
+   !BEGIN
+      bdrag = zero_
+      localdrag = zero_
 
-   CALL aed_bio_drag(icolm, nlev, localdrag)
+      CALL aed_bio_drag(icolm, nlev, localdrag)
 
-   IF (link_bottom_drag) bdrag = localdrag
-END SUBROUTINE BioDrag
-!+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+      IF (link_bottom_drag) bdrag = localdrag
+   END SUBROUTINE BioDrag
+   !++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 
 
 END SUBROUTINE aed_run_model

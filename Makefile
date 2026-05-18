@@ -41,7 +41,6 @@ INCLUDES+=-I${AEDWATDIR}/include -I${incdir} -I${AEDWATDIR}/mod
 include ../libaed-water/make_defs.inc
 
 EXTFFLAGS=
-#EXTFFLAGS=-DNO_RIPARIAN -DNO_LGT -DNO_DEV
 ifneq ($(AEDBENDIR),)
   LIBAEDBBEN=aed-benthic
   SOFLAGS+=${AEDBENDIR}/lib/lib${LIBAEDBEN}.a
@@ -87,9 +86,6 @@ else
    TARGET = ${libdir}/$(APILIB).a
 endif
 
-#LIBS=${SOFLAGS}
-#LIBS=../libaed-water/lib/libaed-water.a ../libaed-benthic/lib/libaed-benthic.a ../libaed-demo/lib/libaed-demo.a
-
 include ../libaed-water/make_rules.inc
 
 ${objdir}/aed_external.o: ../libaed-water/src/aed_external.F90
@@ -100,7 +96,7 @@ ${libdir}/${APILIB}.${so_ext}: ${libdir}/${APILIB}.a
 	ln -sf ${APILIB}.${so_ext}.${SOVERS}.${VERS} $@
 	ln -sf ${APILIB}.${so_ext}.${SOVERS}.${VERS} $@.${SOVERS}
 
-${libdir}/$(APILIB).a: ${objdir} ${moddir} ${libdir} ${OBJS} ${LIBS}
-	ar rv $@ ${OBJS} ${LIBS}
+${libdir}/$(APILIB).a: ${objdir} ${moddir} ${libdir} ${OBJS}
+	ar rv $@ ${OBJS}
 	ranlib $@
 
