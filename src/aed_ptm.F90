@@ -165,11 +165,12 @@ SUBROUTINE aed_ptm_init(ng,np,parts,n_ptm_vars_,n_cells)
 
    DO grp=1,aed_n_groups
      DO prt=1,aed_n_particles
+         ppid = (grp-1)*aed_n_particles + prt
          ! Point single particle object to the global particle data structure
-         ptm(prt)%ptm_istat => ptm_istat(grp,prt,:)
-         ptm(prt)%ptm_env   => ptm_env(grp,prt,1:n_ptm_env)
-         ptm(prt)%ptm_state => ptm_env(grp,prt,n_ptm_env+1:n_ptm_vars)    !ptm_state(grp,prt,:)
-         ptm(prt)%ptm_diag  => ptm_diag(grp,prt,:)
+         ptm(ppid)%ptm_istat => ptm_istat(grp,prt,:)
+         ptm(ppid)%ptm_env   => ptm_env(grp,prt,1:n_ptm_env)
+         ptm(ppid)%ptm_state => ptm_env(grp,prt,n_ptm_env+1:n_ptm_env+n_ptm_vars)    !ptm_state(grp,prt,:)
+         ptm(ppid)%ptm_diag  => ptm_diag(grp,prt,:)
      ENDDO
    ENDDO !end particle loop
 
@@ -346,7 +347,7 @@ SUBROUTINE aed_calculate_particles(icolm, col, nlev)
          ! Point single particle object to the global particle data structure
          ptm(pt)%ptm_istat => ptm_istat(grp,prt,:)
          ptm(pt)%ptm_env   => ptm_env(grp,prt,1:n_ptm_env)
-         ptm(pt)%ptm_state => ptm_env(grp,prt,n_ptm_env+1:n_ptm_vars)    !ptm_state(grp,prt,:)
+         ptm(pt)%ptm_state => ptm_env(grp,prt,n_ptm_env+1:n_ptm_env+n_ptm_vars)    !ptm_state(grp,prt,:)
          ptm(pt)%ptm_diag  => ptm_diag(grp,prt,:)
 
          !print *,'ptm_istat(grp,prt,STAT)',ptm_istat(grp,prt,STAT), ptm%ptm_istat
@@ -364,11 +365,12 @@ SUBROUTINE aed_calculate_particles(icolm, col, nlev)
 
    DO grp=1,aed_n_groups
      DO prt=1,aed_n_particles
+         ppid = (grp-1)*aed_n_particles + prt
          ! Point single particle object to the global particle data structure
-         ptm(prt)%ptm_istat => ptm_istat(grp,prt,:)
-         ptm(prt)%ptm_env   => ptm_env(grp,prt,1:n_ptm_env)
-         ptm(prt)%ptm_state => ptm_env(grp,prt,n_ptm_env+1:n_ptm_vars)    !ptm_state(grp,prt,:)
-         ptm(prt)%ptm_diag  => ptm_diag(grp,prt,:)
+         ptm(ppid)%ptm_istat => ptm_istat(grp,prt,:)
+         ptm(ppid)%ptm_env   => ptm_env(grp,prt,1:n_ptm_env)
+         ptm(ppid)%ptm_state => ptm_env(grp,prt,n_ptm_env+1:n_ptm_env+n_ptm_vars)    !ptm_state(grp,prt,:)
+         ptm(ppid)%ptm_diag  => ptm_diag(grp,prt,:)
      ENDDO
    ENDDO !end particle loop
 
