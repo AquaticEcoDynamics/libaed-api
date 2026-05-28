@@ -299,7 +299,7 @@ END SUBROUTINE Particles
 
 
 !###############################################################################
-SUBROUTINE aed_calculate_particles(icolm, col, nlev)
+SUBROUTINE aed_calculate_particles(icolm, nlev)
 !-------------------------------------------------------------------------------
 !
 ! Calculate biogeochemical transformations on particles
@@ -307,7 +307,7 @@ SUBROUTINE aed_calculate_particles(icolm, col, nlev)
 !-------------------------------------------------------------------------------
 !ARGUMENTS
    TYPE(aed_column_t),INTENT(inout) :: icolm(:)
-   INTEGER,INTENT(in)               :: col, nlev
+   INTEGER,INTENT(in)               :: nlev
 !
 !LOCAL VARIABLES:
    INTEGER :: lev, grp, prt, n, pt, NU

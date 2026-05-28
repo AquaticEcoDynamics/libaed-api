@@ -1316,10 +1316,12 @@ SUBROUTINE aed_run_model(nCols, nLevs, doSurface)
    LOGICAL,INTENT(in) :: doSurface
 !
 !LOCALS
-   INTEGER :: col, top, bot, dir, hi_idx, lo_idx, col_lev
+   INTEGER :: col, itop, ibot, idir, idx_hi, idx_lo, col_lev
    INTEGER :: d, sd, i
    LOGICAL :: first = .TRUE.
    TYPE(aed_variable_t),POINTER :: tv
+   TYPE(aed_column_t)   :: xcol(n_aed_vars)
+   TYPE(api_col_data_t) :: xdat
 !
 !-------------------------------------------------------------------------------
 !BEGIN
@@ -1332,53 +1334,58 @@ SUBROUTINE aed_run_model(nCols, nLevs, doSurface)
    !----------------------------------------------------------------------------
    !# Resetting and re-initialisation tasks
    DO col=1, nCols
-      top = data(col)%top_idx
-      bot = data(col)%bot_idx
-      IF ( bot > top ) THEN
-         dir = -1 ; hi_idx = bot ; lo_idx = top
-         col_lev = hi_idx - lo_idx + 1
+      itop = data(col)%top_idx
+      ibot = data(col)%bot_idx
+      IF ( ibot > itop ) THEN
+         idir = -1 ; idx_hi = ibot ; idx_lo = itop
+         col_lev = idx_hi - idx_lo + 1
+         ibot = col_lev ; itop = 1
       ELSE
-         dir = 1  ; hi_idx = top ; lo_idx = bot
-         col_lev = hi_idx - lo_idx + 1
+         idir = 1 ; idx_hi = itop ; idx_lo = ibot
+         col_lev = idx_hi - idx_lo + 1
+     !   !# This for elcom & schism - may need changing for others
+     !   IF ( nLevs > col_lev ) THEN
+     !      ibot = nLevs - col_lev + 1 ; itop = nLevs
+     !   ELSE
+            ibot = 1 ; itop = col_lev
+     !   ENDIF
       ENDIF
+
+      CALL map_column(col, idx_lo, idx_hi, xcol, xdat)
 
       d = 0; sd = 0
       DO i=1,n_aed_vars
          IF ( aed_get_var(i, tv) ) THEN
             IF (tv%var_type == V_DIAGNOSTIC) THEN
-               IF(tv%sheet) THEN
+               IF (tv%sheet) THEN
                   sd = sd + 1
-                  IF(tv%rezero) THEN
-                    data(col)%cc_diag_hz(sd) = zero_
-                  ENDIF
+                  IF (tv%rezero) xdat%cc_diag_hz(sd) = zero_
                ELSE
                   d = d + 1
-                  IF(tv%rezero) THEN
-                    data(col)%cc_diag(d, :) = zero_
-                  ENDIF
+                  IF (tv%rezero) xdat%cc_diag(d, :) = zero_
                ENDIF
             ENDIF
          ENDIF
       ENDDO
 
-      IF (.NOT. data(col)%active) THEN
-         CALL aed_calculate_dry(all_cols(:,col), bot);
-         CALL aed_calculate_riparian(all_cols(:,col), bot, zero_);
+      IF (.NOT. xdat%active) THEN
+         CALL aed_calculate_dry(xcol, ibot);
+         CALL aed_calculate_riparian(xcol, ibot, zero_);
       ELSE
-         CALL aed_calculate_riparian(all_cols(:,col), bot, one_);
+         CALL aed_calculate_riparian(xcol, ibot, one_);
 
-         IF ( .NOT. reinited ) CALL re_initialize(all_cols(:,col), col, nLevs)
+         IF ( .NOT. reinited ) CALL re_initialize(xcol, xdat, col_lev, ibot, itop)
 
          !----------------------------------------------------------------------
          !# Pre flux integration tasks
-         CALL pre_kinetics(all_cols(:,col), col, col_lev, hi_idx,lo_idx)
+         CALL pre_kinetics(xcol, xdat, col_lev, ibot, itop)
 
          IF (do_particle_bgc) &
-            CALL aed_calculate_particles(all_cols(:,col), col, nLevs)
+            CALL aed_calculate_particles(xcol, col_lev)
 
          !----------------------------------------------------------------------
          !# Main time-step tasks
-         CALL aed_run_column(all_cols(:,col), col, nLevs, doSurface)
+         CALL aed_run_column(xcol, xdat, col_lev, ibot, itop, doSurface)
       ENDIF
    ENDDO
    reinited = .TRUE.
@@ -1388,17 +1395,93 @@ CONTAINS
 
 
    !############################################################################
-   SUBROUTINE pre_kinetics(icolm, col, nlev, hi_idx, lo_idx)
+   SUBROUTINE map_column(col_no, lo_idx, hi_idx, col_out, data_out)
+   !----------------------------------------------------------------------------
+      INTEGER,INTENT(in) :: col_no, lo_idx, hi_idx
+      TYPE(aed_column_t),INTENT(out) :: col_out(:)
+      TYPE(api_col_data_t),INTENT(out) :: data_out
+   !LOCALS
+      INTEGER :: av
+   !
+   !----------------------------------------------------------------------------
+   !BEGIN
+      col_out = all_cols(:,col_no)
+      data_out = data(col)
+
+      DO av=1,n_aed_vars
+         !#========================================================#!
+         col_out(av)%cell     => all_cols(av,col_no)%cell(lo_idx:hi_idx)
+         col_out(av)%flux_pel => all_cols(av,col_no)%flux_pel(lo_idx:hi_idx)
+         !#========================================================#!
+      ENDDO
+      !#===========================================================#!
+      data_out%n_layers = hi_idx - lo_idx + 1
+!#                                      !# in cases like GLM this may vary each timestep
+!#    INTEGER, POINTER   :: top_idx        => null()
+!#    INTEGER, POINTER   :: bot_idx        => null()
+
+      data_out%cc        => data(col_no)%cc(:,lo_idx:hi_idx)
+      data_out%cc_diag   => data(col_no)%cc_diag(:,lo_idx:hi_idx)
+
+      data_out%lheights  => data(col_no)%lheights(lo_idx:hi_idx)
+      data_out%depth     => data(col_no)%depth(lo_idx:hi_idx)
+      data_out%area      => data(col_no)%area(lo_idx:hi_idx)
+      data_out%dz        => data(col_no)%dz(lo_idx:hi_idx)
+
+      data_out%temp      => data(col_no)%temp(lo_idx:hi_idx)
+      data_out%salt      => data(col_no)%salt(lo_idx:hi_idx)
+      data_out%cvel      => data(col_no)%cvel(lo_idx:hi_idx)
+      data_out%pres      => data(col_no)%pres(lo_idx:hi_idx)
+      data_out%rho       => data(col_no)%rho(lo_idx:hi_idx)
+      !# CAB: This is a fudge for tuflow which passes rad (as "par") as a 2d array, but
+      !#      one dim is only ever size 1 - possibly for a fudge of their own
+      IF ( ubound(data(col_no)%rad, 1) >= hi_idx ) THEN
+         data_out%rad    => data(col_no)%rad(lo_idx:hi_idx)
+      ELSE
+         data_out%rad    => data(col_no)%rad(1:1)
+      ENDIF
+
+      data_out%extc      => data(col_no)%extc(lo_idx:hi_idx)
+      data_out%par       => data(col_no)%par(lo_idx:hi_idx)
+      data_out%nir       => data(col_no)%nir(lo_idx:hi_idx)
+      data_out%uva       => data(col_no)%uva(lo_idx:hi_idx)
+      data_out%uvb       => data(col_no)%uvb(lo_idx:hi_idx)
+
+      data_out%tss       => data(col_no)%tss(lo_idx:hi_idx)
+      data_out%ss1       => data(col_no)%ss1(lo_idx:hi_idx)
+      data_out%ss2       => data(col_no)%ss2(lo_idx:hi_idx)
+      data_out%ss3       => data(col_no)%ss3(lo_idx:hi_idx)
+      data_out%ss4       => data(col_no)%ss4(lo_idx:hi_idx)
+
+      data_out%ustar_bed => data(col_no)%ustar_bed(lo_idx:hi_idx)
+      data_out%wv_uorb   => data(col_no)%wv_uorb(lo_idx:hi_idx)
+      data_out%wv_t      => data(col_no)%wv_t(lo_idx:hi_idx)
+
+      data_out%sed_zones => data(col_no)%sed_zones(lo_idx:hi_idx)
+
+      data_out%biodrag   => data(col_no)%biodrag(lo_idx:hi_idx)
+      data_out%bioextc   => data(col_no)%bioextc(lo_idx:hi_idx)
+      !#===========================================================#!
+
+   END SUBROUTINE map_column
+   !++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+
+   !############################################################################
+   SUBROUTINE pre_kinetics(icolm, idata, nlev, bot, top)
    !----------------------------------------------------------------------------
    !ARGUMENTS
       TYPE(aed_column_t),INTENT(inout) :: icolm(:)
-      INTEGER,INTENT(in) :: col, nlev
-      INTEGER,INTENT(in) :: hi_idx,lo_idx
+      TYPE(api_col_data_t),INTENT(in)  :: idata
+      INTEGER,INTENT(in) :: nlev
+      INTEGER,INTENT(in) :: bot, top
    !
    !LOCALS
       TYPE(aed_variable_t),POINTER :: tv
       AED_REAL :: min_C
-      INTEGER  :: i, lev, v
+      INTEGER  :: i, lev, v, dir = 1
+
+      AED_REAL :: ws(n_aed_vars, nlev)
    !
    !----------------------------------------------------------------------------
    !BEGIN
@@ -1420,8 +1503,10 @@ CONTAINS
                ENDIF
             ENDIF
          ENDDO
+
+         IF (bot > top) dir = -1
+         ! update ws for modules that use the mobility method
          DO lev = bot, top, dir
-            ! update ws for modules that use the mobility method
             CALL aed_mobility(icolm, lev, ws(:,lev))
          ENDDO
 
@@ -1437,8 +1522,8 @@ CONTAINS
                      !# only for state_vars that are not sheet, and also non-zero ws
                      IF ( .NOT. ieee_is_nan(tv%mobility) .AND. SUM(ABS(ws(i,:)))>zero_ ) THEN
                         min_C = tv%minimum
-                        CALL doMobility(nlev, timestep, data(col)%dz(lo_idx:hi_idx), data(col)%area(lo_idx:hi_idx), &
-                                                    ws(i,lo_idx:hi_idx), min_C, data(col)%cc(v,lo_idx:hi_idx)  )
+                        CALL doMobility(nlev, timestep, idata%dz(:), idata%area(:), &
+                                                          ws(i,:), min_C, idata%cc(v,:))
                      ENDIF
                   ENDIF
                ENDIF
@@ -1446,21 +1531,22 @@ CONTAINS
          ENDIF
       ENDIF
 
-      DO lev = lo_idx,hi_idx !1, nlev
+      DO lev = 1, nlev
          CALL aed_equilibrate(icolm, lev)
       ENDDO
 
-      CALL check_states(col, nlev)
+      CALL check_states(idata, nlev)
    END SUBROUTINE pre_kinetics
    !++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 
 
    !############################################################################
-   SUBROUTINE aed_run_column(icolm, col, nlev, doSurface)
+   SUBROUTINE aed_run_column(icolm, idata, nlev, bot, top, doSurface)
    !----------------------------------------------------------------------------
    !ARGUMENTS
-      TYPE(aed_column_t),INTENT(inout) :: icolm(:)
-      INTEGER,INTENT(in) :: col, nlev
+      TYPE(aed_column_t),INTENT(inout)   :: icolm(:)
+      TYPE(api_col_data_t),INTENT(inout) :: idata
+      INTEGER,INTENT(in) :: nlev, bot, top
       LOGICAL,INTENT(in) :: doSurface
    !
    !LOCALS
@@ -1472,33 +1558,33 @@ CONTAINS
       localext = zero_; localext_up = zero_
 
       IF (benthic_mode > 1) &
-         CALL p_calc_zone_areas(aedZones, aed_n_zones, data(col)%area, data(col)%lheights, nlev)
+         CALL p_calc_zone_areas(aedZones, aed_n_zones, idata%area, idata%lheights, nlev)
 
       DO split=1,split_factor
          IF (benthic_mode > 1) &
-            CALL p_copy_to_zone(aedZones, aed_n_zones, data(col)%lheights, data(col)%cc,  &
-                                 data(col)%cc_hz, data(col)%cc_diag, data(col)%cc_diag_hz, nlev)
+            CALL p_copy_to_zone(aedZones, aed_n_zones, idata%lheights, idata%cc,  &
+                                 idata%cc_hz, idata%cc_diag, idata%cc_diag_hz, nlev)
 
          !# Update local light field (self-shading may have changed through
          !# changes in biological state variables). Update_light is set to
          !# be inline with current aed_phyoplankton, which requires only
          !# surface par, then integrates over depth of a layer
 
-         !CALL update_light(icolm, col, nlev)
+         !CALL update_light(icolm, idata, nlev)
          IF (.NOT. link_ext_par) &
-            CALL Light(icolm, col, nlev)
+            CALL Light(icolm, idata, nlev, bot, top)
 
          !# non PAR bandwidth fractions (set assuming single light extinction)
-         data(col)%nir(:) = (data(col)%par(:)/par_fraction) * nir_fraction
-         data(col)%uva(:) = (data(col)%par(:)/par_fraction) * uva_fraction
-         data(col)%uvb(:) = (data(col)%par(:)/par_fraction) * uvb_fraction
+         idata%nir(:) = (idata%par(:)/par_fraction) * nir_fraction
+         idata%uva(:) = (idata%par(:)/par_fraction) * uva_fraction
+         idata%uvb(:) = (idata%par(:)/par_fraction) * uvb_fraction
 
          !# Time-integrate one biological time step
-         CALL calculate_fluxes(icolm, col, nlev, doSurface)
+         CALL calculate_fluxes(icolm, idata, nlev, bot, top, doSurface)
 
          !# Update the water column layers
-         data(col)%cc(1:n_vars, lo_idx:hi_idx) = data(col)%cc(1:n_vars, lo_idx:hi_idx) + &
-                                           dt_eff*flux_pel(1:n_vars, lo_idx:hi_idx)
+         idata%cc(1:n_vars, :) = idata%cc(1:n_vars, :) + &
+                                           dt_eff*flux_pel(1:n_vars, 1:nlev)
 
          !# Now update benthic variables, depending on whether zones are simulated
          IF ( benthic_mode > 1 ) THEN
@@ -1510,35 +1596,35 @@ CONTAINS
             ENDDO
 
             !# Distribute cc-sed benthic properties back into main cc array
-            CALL p_copy_from_zone(aedZones, aed_n_zones, data(col)%lheights, data(col)%cc,  &
-                                 data(col)%cc_hz, data(col)%cc_diag, data(col)%cc_diag_hz, nlev)
+            CALL p_copy_from_zone(aedZones, aed_n_zones, idata%lheights, idata%cc,  &
+                                 idata%cc_hz, idata%cc_diag, idata%cc_diag_hz, nlev)
          ELSE
-            data(col)%cc_hz(1:n_vars_ben) = data(col)%cc_hz(1:n_vars_ben) + &
+            idata%cc_hz(1:n_vars_ben) = idata%cc_hz(1:n_vars_ben) + &
                                      dt_eff*flux_ben(n_vars+1:n_vars+n_vars_ben)
          ENDIF
 
-         CALL check_states(col, nlev)
+         CALL check_states(idata, nlev)
       ENDDO
 
-      CALL BioExtinction(icolm, nlev, data(col)%bioextc(:))
+      CALL BioExtinction(icolm, nlev, bot, top, idata%bioextc(:))
       IF (.NOT. link_ext_par) THEN
          ! Update the extinction coefficient for local light calculations
-         data(col)%extc(:) = data(col)%bioextc(:) + Kw
+         idata%extc(:) = idata%bioextc(:) + Kw
       ENDIF
       IF (.NOT. bioshade_feedback) THEN
          ! Disble the extinction coefficient feedback to the host
-         data(col)%bioextc(:) = zero_
+         idata%bioextc(:) = zero_
       ENDIF
-
    END SUBROUTINE aed_run_column
    !++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 
 
    !############################################################################
-   SUBROUTINE aed_initialize_zone_benthic(col, nlev, n_aed_vars)
+   SUBROUTINE aed_initialize_zone_benthic(idata, nlev, n_aed_vars)
    !----------------------------------------------------------------------------
    !ARGUMENTS
-      INTEGER,INTENT(in)   :: col, nlev
+      TYPE(api_col_data_t),INTENT(inout) :: idata
+      INTEGER,INTENT(in)   :: nlev
       INTEGER,INTENT(in)   :: n_aed_vars
    !
    !LOCALS
@@ -1552,26 +1638,28 @@ CONTAINS
          CALL aed_initialize_benthic(zon_cols(:,zon), 1)
       ENDDO
 
-      CALL p_copy_from_zone(aedZones, aed_n_zones, data(col)%lheights, data(col)%cc,  &
-                     data(col)%cc_hz, data(col)%cc_diag, data(col)%cc_diag_hz, nlev)
+      CALL p_copy_from_zone(aedZones, aed_n_zones, idata%lheights, idata%cc,  &
+                             idata%cc_hz, idata%cc_diag, idata%cc_diag_hz, nlev)
    END SUBROUTINE aed_initialize_zone_benthic
    !++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 
 
    !############################################################################
-   SUBROUTINE re_initialize(icolm, col, nlev)
+   SUBROUTINE re_initialize(icolm, idata, nlev, bot, top)
    !----------------------------------------------------------------------------
    !ARGUMENTS
-      TYPE(aed_column_t),INTENT(inout) :: icolm(:)
-      INTEGER,INTENT(in) :: col, nlev
+      TYPE(aed_column_t),INTENT(inout)   :: icolm(:)
+      TYPE(api_col_data_t),INTENT(inout) :: idata
+      INTEGER,INTENT(in) :: nlev, bot, top
    !
    !LOCALS
-      INTEGER :: lev,zon,av,sv,sd
+      INTEGER :: lev, zon, av, sv, sd, dir = 1
       TYPE(aed_variable_t),POINTER :: tvar
       TYPE(aed_column_t),DIMENSION(:),POINTER :: column_sed    !# (n_aed_vars)
    !
    !----------------------------------------------------------------------------
    !BEGIN
+      if (bot > top) dir = -1
       DO lev=bot, top, dir
          CALL aed_initialize(icolm, lev)
       ENDDO
@@ -1614,7 +1702,7 @@ CONTAINS
       ELSE
          !# assumes only GLM does the odd zoning stuff
          IF ( do_zone_averaging ) THEN
-            CALL aed_initialize_zone_benthic(col, nlev, n_aed_vars)
+            CALL aed_initialize_zone_benthic(idata, nlev, n_aed_vars)
          ELSE
             CALL aed_initialize_benthic(icolm, 1)
          ENDIF
@@ -1624,14 +1712,15 @@ CONTAINS
 
 
    !############################################################################
-   SUBROUTINE glm_benthics(icolm, col, nlev, bot)
+   SUBROUTINE glm_benthics(icolm, idata, nlev, bot)
    !----------------------------------------------------------------------------
    ! Calculate the benthic fluxes for GLM. This has been seperated from the
    ! general calc because its more complicated.
    !----------------------------------------------------------------------------
    !ARGUMENTS
       TYPE(aed_column_t),INTENT(inout) :: icolm(:)
-      INTEGER, INTENT(in) :: col, nlev, bot
+      TYPE(api_col_data_t),INTENT(in)  :: idata
+      INTEGER, INTENT(in) :: nlev, bot
    !
    !LOCALS
       INTEGER  :: lev,zon,v,av,sv,sd
@@ -1659,8 +1748,8 @@ CONTAINS
          !# distribute bottom flux into pelagic over bottom box (i.e., divide by layer height)
          !# Skip -ve values, as GEO_ubalchg is -ve and doesnt not comply with this logic
          DO v=1,n_vars
-            IF ( data(col)%cc(v, bot) >= 0.0 ) &
-               flux_pel(v, bot) = max(-1.0 * data(col)%cc(v, bot), flux_pel(v, bot)/data(col)%dz(bot))
+            IF ( idata%cc(v, bot) >= 0.0 ) &
+               flux_pel(v, bot) = max(-1.0 * idata%cc(v, bot), flux_pel(v, bot)/idata%dz(bot))
          END DO
       !# --------------------------------------
       CASE ( 1 )
@@ -1677,8 +1766,8 @@ CONTAINS
          !# distribute bottom flux into pelagic over bottom box (i.e., divide by layer height)
          !# Skip -ve values, as GEO_ubalchg is -ve and doesnt not comply with this logic
          DO v=1,n_vars
-            IF ( data(col)%cc(v, bot) >= 0.0 ) &
-               flux_pel(v, bot) = max(-1.0 * data(col)%cc(v, bot), flux_pel(v, bot)/data(col)%dz(bot))
+            IF ( idata%cc(v, bot) >= 0.0 ) &
+               flux_pel(v, bot) = max(-1.0 * idata%cc(v, bot), flux_pel(v, bot)/idata%dz(bot))
          END DO
 
 !$OMP DO
@@ -1691,10 +1780,10 @@ CONTAINS
             !# & distribute bottom flux into pelagic over bottom box (i.e., divide by layer height).
             !# scaled to proportion of area that is "bottom"
             DO v=1,n_vars
-               IF ( data(col)%cc(v, lev) >= 0.0 ) flux_pel(v, lev) = &
-                                max(-1.0 * data(col)%cc(v, lev), flux_pel(v, lev)/data(col)%dz(lev))
+               IF ( idata%cc(v, lev) >= 0.0 ) flux_pel(v, lev) = &
+                                max(-1.0 * idata%cc(v, lev), flux_pel(v, lev)/idata%dz(lev))
             END DO
-            flux_pel(:, lev) = flux_pel(:, lev) * (data(col)%area(lev)-data(col)%area(lev-1))/data(col)%area(lev)
+            flux_pel(:, lev) = flux_pel(:, lev) * (idata%area(lev)-idata%area(lev-1))/idata%area(lev)
          ENDDO
 !$OMP END DO
 
@@ -1738,7 +1827,7 @@ CONTAINS
             !# (1) ZONE COLUMN UPDATING
             zlev = 0
             DO lev=1,nlev
-               IF (aedZones(zon)%z_env%z_height < data(col)%lheights(lev)) THEN
+               IF (aedZones(zon)%z_env%z_height < idata%lheights(lev)) THEN
                   zlev = lev
                   EXIT
                ENDIF
@@ -1794,7 +1883,7 @@ CONTAINS
          DO lev=nlev,1,-1
             IF ( zon > 1 ) THEN
                IF (lev > 1) THEN
-                  splitZone = data(col)%lheights(lev-1) < aedZones(zon-1)%z_env%z_height
+                  splitZone = idata%lheights(lev-1) < aedZones(zon-1)%z_env%z_height
                ELSE
                   splitZone = 0.0 < aedZones(zon-1)%z_env%z_height
                ENDIF
@@ -1804,10 +1893,10 @@ CONTAINS
 
             IF (splitZone) THEN
                IF (lev > 1) THEN
-                  scale = (aedZones(zon-1)%z_env%z_height - data(col)%lheights(lev-1)) / &
-                                              (data(col)%lheights(lev) - data(col)%lheights(lev-1))
+                  scale = (aedZones(zon-1)%z_env%z_height - idata%lheights(lev-1)) / &
+                                              (idata%lheights(lev) - idata%lheights(lev-1))
                ELSE
-                  scale = (aedZones(zon-1)%z_env%z_height - 0.0) / (data(col)%lheights(lev) - 0.0)
+                  scale = (aedZones(zon-1)%z_env%z_height - 0.0) / (idata%lheights(lev) - 0.0)
                ENDIF
                flux_pel(1:n_vars,lev) = flux_pel_z(1:n_vars,zon) * scale
 
@@ -1824,10 +1913,10 @@ CONTAINS
          !# bottom flux into pelagic over bottom box (i.e., divide by layer height).
          !# scaled to proportion of layer area that is "bottom"
          DO lev=1,nlev
-            IF (lev > 1) flux_pel(:, lev) = flux_pel(:, lev) * (data(col)%area(lev)-data(col)%area(lev-1))/data(col)%area(lev)
+            IF (lev > 1) flux_pel(:, lev) = flux_pel(:, lev) * (idata%area(lev)-idata%area(lev-1))/idata%area(lev)
             DO v=1,n_vars
-              IF ( data(col)%cc(v, 1) .GE. 0.0 ) flux_pel(v, lev) = &
-                             max(-1.0 * data(col)%cc(v, lev), flux_pel(v, lev)/data(col)%dz(lev))
+              IF ( idata%cc(v, 1) .GE. 0.0 ) flux_pel(v, lev) = &
+                             max(-1.0 * idata%cc(v, lev), flux_pel(v, lev)/idata%dz(lev))
             END DO
          ENDDO
       CASE DEFAULT
@@ -1838,17 +1927,18 @@ CONTAINS
 
 
    !############################################################################
-   SUBROUTINE calculate_fluxes(icolm, col, nlev, doSurface)
+   SUBROUTINE calculate_fluxes(icolm, idata, nlev, bot, top, doSurface)
    !----------------------------------------------------------------------------
    ! Checks the current values of all state variables and repairs these
    !----------------------------------------------------------------------------
    !ARGUMENTS
       TYPE(aed_column_t),INTENT(inout) :: icolm(:)
-      INTEGER,INTENT(in) :: col, nlev
+      TYPE(api_col_data_t),INTENT(in)  :: idata
+      INTEGER,INTENT(in) :: nlev, bot, top
       LOGICAL,INTENT(in) :: doSurface
    !
    !LOCALS
-      INTEGER :: lev
+      INTEGER :: lev, dir = 1
       INTEGER :: layer_map(nlev)
    !
    !----------------------------------------------------------------------------
@@ -1870,7 +1960,7 @@ CONTAINS
 
       !# BENTHIC FLUXES
       IF ( glm_style_zones ) THEN
-         CALL glm_benthics(icolm, col, nlev, bot)
+         CALL glm_benthics(icolm, idata, nlev, bot)
       ELSE
          !# COLUMN
          !# Now update any column diagnostics (e.g., used for light)
@@ -1888,7 +1978,7 @@ CONTAINS
          CALL aed_calculate_benthic(icolm, bot)
 
          !# Distribute bottom flux into pelagic over bottom box (i.e., divide by layer height).
-         flux_pel(:,bot) = flux_pel(:,bot)/data(col)%lheights(bot)
+         flux_pel(:,bot) = flux_pel(:,bot)/idata%lheights(bot)
       ENDIF
 
       !# SURFACE FLUXES
@@ -1897,9 +1987,10 @@ CONTAINS
          CALL aed_calculate_surface(icolm, top)
 
          !# Distribute the fluxes into pelagic surface layer
-         flux_pel(:, top) = flux_pel(:, top) + flux_atm(:)/data(col)%dz(top)
+         flux_pel(:, top) = flux_pel(:, top) + flux_atm(:)/idata%dz(top)
       ENDIF
 
+      if (bot > top)dir = -1
       !# WATER CELL KINETICS
       !# Add pelagic sink and source terms in cells of all depth levels.
       DO lev=top, bot, -dir
@@ -1911,10 +2002,11 @@ CONTAINS
 
 
    !############################################################################
-   SUBROUTINE check_states(col, nlev)
+   SUBROUTINE check_states(idata, nlev)
    !----------------------------------------------------------------------------
    !ARGUMENTS
-      INTEGER,INTENT(in) :: col, nlev
+      TYPE(api_col_data_t),INTENT(in) :: idata
+      INTEGER,INTENT(in) :: nlev
    !
    !LOCALS
       TYPE(aed_variable_t),POINTER :: tv
@@ -1934,31 +2026,31 @@ CONTAINS
                IF (tv%sheet) THEN
                   sv = sv + 1
 #if DEBUG
-                  IF ( last_naned == -1 .AND. ieee_is_nan(data(col)%cc_hz(sv)) ) &
+                  IF ( last_naned == -1 .AND. ieee_is_nan(idata%cc_hz(sv)) ) &
                      last_naned = i
 #endif
                   IF ( .NOT. ieee_is_nan(tv%minimum) ) THEN
-                     IF ( data(col)%cc_hz(sv) < tv%minimum ) &
-                        data(col)%cc_hz(sv) = tv%minimum
+                     IF ( idata%cc_hz(sv) < tv%minimum ) &
+                        idata%cc_hz(sv) = tv%minimum
                   ENDIF
                   IF ( .NOT. ieee_is_nan(tv%maximum) ) THEN
-                     IF ( data(col)%cc_hz(sv) > tv%maximum ) &
-                        data(col)%cc_hz(sv) = tv%maximum
+                     IF ( idata%cc_hz(sv) > tv%maximum ) &
+                        idata%cc_hz(sv) = tv%maximum
                   ENDIF
                ELSE
                   v = v + 1
                   DO lev=1, nlev
 #if DEBUG
-                     IF ( last_naned == -1 .AND. ieee_is_nan(data(col)%cc(v, lev)) ) &
+                     IF ( last_naned == -1 .AND. ieee_is_nan(idata%cc(v, lev)) ) &
                         last_naned = i
 #endif
                      IF ( .NOT. ieee_is_nan(tv%minimum) ) THEN
-                        IF ( data(col)%cc(v, lev) < tv%minimum ) &
-                           data(col)%cc(v, lev) = tv%minimum
+                        IF ( idata%cc(v, lev) < tv%minimum ) &
+                           idata%cc(v, lev) = tv%minimum
                      ENDIF
                      IF ( .NOT. ieee_is_nan(tv%maximum) ) THEN
-                        IF ( data(col)%cc(v, lev) > tv%maximum ) &
-                           data(col)%cc(v, lev) = tv%maximum
+                        IF ( idata%cc(v, lev) > tv%maximum ) &
+                           idata%cc(v, lev) = tv%maximum
                      ENDIF
                   ENDDO
                ENDIF
@@ -1982,17 +2074,18 @@ CONTAINS
 
 
    !############################################################################
-   SUBROUTINE update_light(icolm, col, nlev)
+   SUBROUTINE update_light(icolm, idata, nlev, bot, top)
    !----------------------------------------------------------------------------
    ! Calculate photosynthetically active radiation over entire column based
    ! on surface radiation, attenuated based on background & biotic extinction
    !----------------------------------------------------------------------------
    !ARGUMENTS
-      TYPE (aed_column_t),INTENT(inout) :: icolm(:)
-      INTEGER,INTENT(in) :: col, nlev
+      TYPE(aed_column_t),INTENT(inout) :: icolm(:)
+      TYPE(api_col_data_t),INTENT(in)  :: idata
+      INTEGER,INTENT(in) :: nlev, bot, top
    !
    !LOCALS
-      INTEGER :: lev
+      INTEGER :: lev, dir = 1
       AED_REAL :: localext, localext_up, KW_2
    !
    !----------------------------------------------------------------------------
@@ -2003,28 +2096,28 @@ CONTAINS
       CALL aed_light_extinction(icolm, top, localext)
 
       ! Surface PAR
-      data(col)%par(top) = &
-           par_fraction * data(col)%rad(top) * EXP( -(0.1+localext)*1e-6*data(col)%dz(top) )
+      idata%par(top) = &
+           par_fraction * idata%rad(top) * EXP( -(0.1+localext)*1e-6*idata%dz(top) )
 
+      if (bot>top) dir = -1
       ! Now set the top of subsequent layers, down to the bottom
       DO lev = (top-dir), bot, -dir
          localext_up = localext
 
          CALL aed_light_extinction(icolm, lev, localext)
 
-         data(col)%par(lev) = &
-            data(col)%par(lev-dir) * EXP( -(0.1 + localext_up) * data(col)%dz(lev-dir) )
+         idata%par(lev) = &
+            idata%par(lev-dir) * EXP( -(0.1 + localext_up) * idata%dz(lev-dir) )
 
-         IF (bioshade_feedback) data(col)%bioextc(lev) = localext
-         IF (bioshade_feedback) data(col)%extc(lev) = 0.1 + localext
+         IF (bioshade_feedback) idata%bioextc(lev) = localext
+         IF (bioshade_feedback) idata%extc(lev) = 0.1 + localext
       ENDDO
-
    END SUBROUTINE update_light
    !++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 
 
    !############################################################################
-   SUBROUTINE Light(icolm, col, nlev)
+   SUBROUTINE Light(icolm, idata, nlev, bot, top)
    !----------------------------------------------------------------------------
    !
    ! Calculate photosynthetically active radiation over entire column
@@ -2032,11 +2125,12 @@ CONTAINS
    !
    !----------------------------------------------------------------------------
    !ARGUMENTS
-      TYPE (aed_column_t), INTENT(inout) :: icolm(:)
-      INTEGER, INTENT(in) :: col, nlev
+      TYPE(aed_column_t),INTENT(inout) :: icolm(:)
+      TYPE(api_col_data_t),INTENT(in)  :: idata
+      INTEGER, INTENT(in) :: nlev, bot, top
    !
    !LOCAL VARIABLES:
-      INTEGER  :: lev
+      INTEGER  :: lev, dir = 1
       AED_REAL :: extc(1:nlev)
       AED_REAL :: zz, localext
    !
@@ -2045,32 +2139,30 @@ CONTAINS
       zz = zero_
       localext = zero_
 
-      CALL BioExtinction(icolm,nlev,extc)
+      CALL BioExtinction(icolm, nlev, bot, top, extc)
 
       extc = extc + Kw
 
       localext = extc(top)
       zz = 0.001 !0.5*h_(1)    !MH: assume top of layer
-      data(col)%par(top) = par_fraction &
-                           * data(col)%rad(top) * EXP( -(localext)*zz )
+      idata%par(top) = par_fraction * idata%rad(top) * EXP( -(localext)*zz )
 
       IF (nlev <= 1) RETURN
 
+      if (bot>top) dir = -1
       ! Now set the top of subsequent layers, down to the bottom
       DO lev = (top-dir), bot, -dir
-
          localext = extc(lev)
 
-         data(col)%par(lev) = &
-            data(col)%par(lev+dir) * EXP( -(localext) * data(col)%dz(lev+dir) )
+         idata%par(lev) = &
+            idata%par(lev+dir) * EXP( -(localext) * idata%dz(lev+dir) )
       ENDDO
-
    END SUBROUTINE Light
    !++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 
 
    !############################################################################
-   SUBROUTINE BioExtinction(icolm,nlev,extc)
+   SUBROUTINE BioExtinction(icolm, nlev, bot, top, extc)
    !----------------------------------------------------------------------------
    !
    ! Calculate the specific light attenuation additions due to AED modules
@@ -2078,11 +2170,11 @@ CONTAINS
    !----------------------------------------------------------------------------
    !ARGUMENTS
       TYPE (aed_column_t),INTENT(inout) :: icolm(:)
-      INTEGER,  INTENT(in)    :: nlev
+      INTEGER,  INTENT(in)    :: nlev, bot, top
       AED_REAL, INTENT(inout) :: extc(:)
    !
    !LOCAL VARIABLES:
-      INTEGER :: i
+      INTEGER :: i, dir = 1
       AED_REAL :: localext
    !
    !----------------------------------------------------------------------------
@@ -2094,11 +2186,11 @@ CONTAINS
 
       IF (nlev <= 1) RETURN
 
-      DO i = 2, nlev
+      if (bot>top) dir = -1
+      DO i = top, bot, -dir
          CALL aed_light_extinction(icolm, i, localext)
          extc(i) = localext
       ENDDO
-
    END SUBROUTINE BioExtinction
    !++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 
