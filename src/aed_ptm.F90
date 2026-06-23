@@ -42,7 +42,8 @@ MODULE aed_ptm
 
    PRIVATE ! By default, make everything private
 
-   PUBLIC aed_part_group_t, aed_ptm_init, ptm_istat, ptm_env, Particles, aed_calculate_particles, set_ptm_aed_var_num
+   PUBLIC aed_part_group_t, aed_ptm_init, ptm_istat, ptm_env, Particles, aed_calculate_particles, &
+          aed_split_particles, aed_ptm_set_cell_map, set_ptm_aed_var_num
 
    !#--------------------------------------------------------------------------#
    !# Module Types
@@ -95,6 +96,13 @@ MODULE aed_ptm
 !   INTEGER :: num_groups
 !   TYPE(partgroup),DIMENSION(:),POINTER :: particle_groups
    TYPE(partgroup_cell),DIMENSION(:),ALLOCATABLE, TARGET :: all_particles
+
+   !# Optional host map (layer,col) -> global cell index, used to translate a
+   !# column's local levels into the global cell space the particles are binned
+   !# in (IDX3). For single-column hosts (GLM) this is left unset and the global
+   !# cell defaults to the (layer) index - preserving existing behaviour.
+   INTEGER,DIMENSION(:,:),ALLOCATABLE :: ptm_cell_id
+   LOGICAL :: have_cell_id = .FALSE.
 
    INTEGER, PARAMETER :: STAT = 1
    INTEGER, PARAMETER :: IDX2 = 2
@@ -299,25 +307,53 @@ END SUBROUTINE Particles
 
 
 !###############################################################################
-SUBROUTINE aed_calculate_particles(icolm, nlev)
+SUBROUTINE aed_ptm_set_cell_map(cell_id)
+!-------------------------------------------------------------------------------
+! Provide the host map (layer,col) -> global cell index so multi-column hosts
+! (e.g. ELCOM) can translate a column's local levels into the global cell space
+! the particles are binned in (IDX3). Single-column hosts (GLM) need not call
+! this; the global cell then defaults to the layer index.
+!-------------------------------------------------------------------------------
+!ARGUMENTS
+   INTEGER,DIMENSION(:,:),INTENT(in) :: cell_id   !# (layer, col)
+!LOCALS
+   INTEGER :: rc
+!
+!-------------------------------------------------------------------------------
+!BEGIN
+   IF (ALLOCATED(ptm_cell_id)) DEALLOCATE(ptm_cell_id)
+   ALLOCATE(ptm_cell_id(size(cell_id,1),size(cell_id,2)),stat=rc)
+   IF (rc /= 0) STOP 'aed_ptm_set_cell_map(): ERROR allocating (ptm_cell_id)'
+   ptm_cell_id = cell_id
+   have_cell_id = .TRUE.
+END SUBROUTINE aed_ptm_set_cell_map
+!+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+
+!###############################################################################
+SUBROUTINE aed_calculate_particles(icolm, nlev, idx_lo, idx_hi, col_no)
 !-------------------------------------------------------------------------------
 !
-! Calculate biogeochemical transformations on particles
+! Calculate biogeochemical transformations on particles for a single column.
 !
+! Particles are binned (in Particles()) into all_particles() by their GLOBAL
+! cell index (IDX3). idx_lo:idx_hi is the layer range of THIS column; local level
+! `lev` maps to the host layer `idx_lo+lev-1`. For multi-column hosts the host
+! supplies ptm_cell_id(layer,col) (via aed_ptm_set_cell_map) to convert that to
+! the global cell. For single-column hosts (GLM) no map is set and the global
+! cell defaults to the layer index - behaviour is unchanged. Particle splitting
+! is handled separately, once per step, by aed_split_particles().
 !-------------------------------------------------------------------------------
 !ARGUMENTS
    TYPE(aed_column_t),INTENT(inout) :: icolm(:)
-   INTEGER,INTENT(in)               :: nlev
+   INTEGER,INTENT(in)               :: nlev          !# layers in this column (= idx_hi-idx_lo+1)
+   INTEGER,INTENT(in)               :: idx_lo,idx_hi !# host layer index range of this column
+   INTEGER,INTENT(in)               :: col_no        !# host column number (for the cell map)
 !
 !LOCAL VARIABLES:
-   INTEGER :: lev, grp, prt, n, pt, NU
-   INTEGER :: ppid, i, pid, new_prt
-   AED_REAL :: dt = 3600
-   AED_REAL :: div
-   LOGICAL :: pass
-
+   INTEGER :: lev, lyr, gc, grp, prt, pt
+   INTEGER :: ppid
    TYPE (aed_ptm_t), DIMENSION(:), ALLOCATABLE :: ptm
-
    TYPE(partgroup_cell), POINTER :: layer_particles
 !
 !-------------------------------------------------------------------------------
@@ -325,24 +361,27 @@ SUBROUTINE aed_calculate_particles(icolm, nlev)
 !BEGIN
    IF (aed_n_groups == 0 .OR. aed_n_particles == 0) RETURN
 
-!  DO lev=1,nlev
-!  ENDDO
-
    DO lev=1,nlev
-      layer_particles => all_particles(lev)
+      lyr = idx_lo + lev - 1           !# host layer index for this local level
+      IF ( have_cell_id ) THEN
+         IF ( lyr < 1 .OR. lyr > size(ptm_cell_id,1) .OR. &
+              col_no < 1 .OR. col_no > size(ptm_cell_id,2) ) CYCLE
+         gc = ptm_cell_id(lyr, col_no) !# global cell index
+      ELSE
+         gc = lyr                      !# single-column fallback (GLM)
+      ENDIF
+      IF ( gc < 1 .OR. gc > size(all_particles) ) CYCLE
+      layer_particles => all_particles(gc)
 
-      !print *, "ptm", lev, layer_particles%count
+      !print *, "ptm", lev, gc, layer_particles%count
       IF (layer_particles%count == 0) CYCLE
 
       ALLOCATE(ptm(layer_particles%count))
 
-      ppid = 0          ! new cell identifier, to allow cumulation of prts
       DO pt=1,layer_particles%count
 
          ! Retrieve particle properties, from the particle-cell object
          grp = layer_particles%prt(pt)%grp ; prt = layer_particles%prt(pt)%idx
-
-         !print *, "ppp", lev, pt, grp, prt
 
          ! Point single particle object to the global particle data structure
          ptm(pt)%ptm_istat => ptm_istat(grp,prt,:)
@@ -350,16 +389,37 @@ SUBROUTINE aed_calculate_particles(icolm, nlev)
          ptm(pt)%ptm_state => ptm_env(grp,prt,n_ptm_env+1:n_ptm_env+n_ptm_vars)    !ptm_state(grp,prt,:)
          ptm(pt)%ptm_diag  => ptm_diag(grp,prt,:)
 
-         !print *,'ptm_istat(grp,prt,STAT)',ptm_istat(grp,prt,STAT), ptm%ptm_istat
       ENDDO !end particle loop
       ppid = layer_particles%count
 
-      ! Pass through the particle to AED modules, if its active
-      !IF ( ptm_istat(grp,prt,STAT) >= 0 ) THEN
-         CALL aed_particle_bgc(icolm,lev,ppid,p=ptm) ! Note: ppid getting incremeted in here
-      !ENDIF
+      ! Pass the particles in this cell to AED modules
+      CALL aed_particle_bgc(icolm,lev,ppid,p=ptm) ! Note: ppid getting incremeted in here
+
       DEALLOCATE(ptm)
-   ENDDO !end layer loop
+   ENDDO !end cell loop
+
+END SUBROUTINE aed_calculate_particles
+!+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+
+!###############################################################################
+SUBROUTINE aed_split_particles()
+!-------------------------------------------------------------------------------
+!
+! Apply particle splitting (ABM) across ALL particle groups, once per step.
+!
+! Previously this was done inside aed_calculate_particles, which is called once
+! per column - for multi-column hosts that would split particles N_cols times.
+! This routine is host-column independent and must be called exactly once after
+! all columns have been processed.
+!-------------------------------------------------------------------------------
+!LOCAL VARIABLES:
+   INTEGER :: grp, prt, ppid
+   TYPE (aed_ptm_t), DIMENSION(:), ALLOCATABLE :: ptm
+!
+!-------------------------------------------------------------------------------
+!BEGIN
+   IF (aed_n_groups == 0 .OR. aed_n_particles == 0) RETURN
 
    ALLOCATE(ptm(aed_n_particles*aed_n_groups))
 
@@ -379,7 +439,7 @@ SUBROUTINE aed_calculate_particles(icolm, nlev)
    CALL aed_split_particle(ppid,ptm)
    DEALLOCATE(ptm)
 
-END SUBROUTINE aed_calculate_particles
+END SUBROUTINE aed_split_particles
 !+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 
 

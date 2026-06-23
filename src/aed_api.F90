@@ -40,7 +40,7 @@ MODULE aed_api
    USE aed_util
    USE aed_common
    USE aed_zones
-   USE aed_ptm, ONLY : Particles, aed_calculate_particles, set_ptm_aed_var_num
+   USE aed_ptm, ONLY : Particles, aed_calculate_particles, aed_split_particles, set_ptm_aed_var_num
 
    IMPLICIT NONE
 
@@ -1381,13 +1381,18 @@ SUBROUTINE aed_run_model(nCols, nLevs, doSurface)
          CALL pre_kinetics(xcol, xdat, col_lev, ibot, itop)
 
          IF (do_particle_bgc) &
-            CALL aed_calculate_particles(xcol, col_lev)
+            CALL aed_calculate_particles(xcol, col_lev, idx_lo, idx_hi, col)
 
          !----------------------------------------------------------------------
          !# Main time-step tasks
          CALL aed_run_column(xcol, xdat, col_lev, ibot, itop, doSurface)
       ENDIF
    ENDDO
+
+   !# Particle splitting (ABM) is host-column independent: run it exactly once,
+   !# after every column has been processed, not per-column.
+   IF (do_particle_bgc) CALL aed_split_particles()
+
    reinited = .TRUE.
 
 !-------------------------------------------------------------------------------
