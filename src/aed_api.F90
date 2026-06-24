@@ -1380,6 +1380,13 @@ SUBROUTINE aed_run_model(nCols, nLevs, doSurface)
          !# Pre flux integration tasks
          CALL pre_kinetics(xcol, xdat, col_lev, ibot, itop)
 
+         !# Refresh the local light field before the particle BGC reads it.
+         !# aed_calculate_particles runs once per host step (before aed_run_column)
+         !# and reads idata%par; without this the particles would see last step's
+         !# light. aed_run_column recomputes Light per split for the water column.
+         IF (do_particle_bgc .AND. .NOT. link_ext_par) &
+            CALL Light(xcol, xdat, col_lev, ibot, itop)
+
          IF (do_particle_bgc) &
             CALL aed_calculate_particles(xcol, col_lev, idx_lo, idx_hi, col)
 
