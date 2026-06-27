@@ -172,6 +172,10 @@ MODULE aed_api
       AED_REAL,DIMENSION(:),POINTER :: wv_t           => null()
       AED_REAL,POINTER              :: layer_stress   => null()
       AED_REAL,POINTER              :: dz_benthic     => null()
+      AED_REAL,POINTER              :: u_star         => null()  ! wind friction velocity
+      AED_REAL,POINTER              :: Q_net          => null()  ! net non-penetrative heat flux
+      AED_REAL,POINTER              :: delzBlueIce    => null()  ! blue ice thickness
+      AED_REAL,POINTER              :: delzWhiteIce   => null()  ! white ice thickness
 
       !# bottom sediment zone classification
       AED_REAL,DIMENSION(:),POINTER :: sed_zones      => null()  !# sedzones are an odd mix - for GLM a zone will be different at
@@ -260,6 +264,10 @@ MODULE aed_api
       AED_REAL,DIMENSION(:),POINTER   :: wv_t           => null()
       AED_REAL,POINTER                :: layer_stress   => null()
       AED_REAL,POINTER                :: dz_benthic     => null()
+      AED_REAL,POINTER                :: u_star         => null()
+      AED_REAL,POINTER                :: Q_net          => null()
+      AED_REAL,POINTER                :: delzBlueIce    => null()
+      AED_REAL,POINTER                :: delzWhiteIce   => null()
 
       AED_REAL,DIMENSION(:),POINTER   :: sed_zones      => null()
       AED_REAL,POINTER                :: sed_zone       => null()
@@ -658,6 +666,11 @@ SUBROUTINE aed_set_coupling(conf)
    friction => conf%friction
 
    Kw => conf%Kw
+
+   par_fraction = conf%par_fraction
+   nir_fraction = conf%nir_fraction
+   uva_fraction = conf%uva_fraction
+   uvb_fraction = conf%uvb_fraction
 END SUBROUTINE aed_set_coupling
 !+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 
@@ -866,6 +879,10 @@ SUBROUTINE aed_set_model_env(env, ncols, nlevs)
       data(col)%wv_t         => env(col)%wv_t
       data(col)%layer_stress => env(col)%layer_stress
       data(col)%dz_benthic   => env(col)%dz_benthic
+      data(col)%u_star       => env(col)%u_star
+      data(col)%Q_net        => env(col)%Q_net
+      data(col)%delzBlueIce  => env(col)%delzBlueIce
+      data(col)%delzWhiteIce => env(col)%delzWhiteIce
 
       data(col)%sed_zones    => env(col)%sed_zones
       data(col)%sed_zone     => env(col)%sed_zone
@@ -935,6 +952,10 @@ SUBROUTINE aed_set_model_env(env, ncols, nlevs)
    IF (BSSOCIATED(ss4))            tv=aed_provide_global      ('ss4',           'ss4',                   'g/m3'    )
 
    IF (BSSOCIATED(layer_stress))   tv=aed_provide_sheet_global('taub',          'layer stress',          'N/m2'    )
+   IF (BSSOCIATED(u_star))        tv=aed_provide_sheet_global('u_star',        'wind friction velocity', 'm/s'     )
+   IF (BSSOCIATED(Q_net))         tv=aed_provide_sheet_global('Q_net',         'net heat flux',          'W/m2'    )
+   IF (BSSOCIATED(delzBlueIce))   tv=aed_provide_sheet_global('delzBlueIce',   'thickness of blue ice',  'm'       )
+   IF (BSSOCIATED(delzWhiteIce))  tv=aed_provide_sheet_global('delzWhiteIce',  'thickness of white ice', 'm'       )
 
    IF (BSSOCIATED(sed_zones))      tv=aed_provide_global      ('sed_zones',     'sediment zones',        '-'       )
    IF (BSSOCIATED(sed_zone))       tv=aed_provide_sheet_global('sed_zone',      'current sediment zone', '-'       )
@@ -1030,6 +1051,10 @@ SUBROUTINE aed_check_model_setup
             CASE ( 'ss4' )         ; tvar%found = BSSOCIATED(ss4)
 
             CASE ( 'taub' )        ; tvar%found = BSSOCIATED(layer_stress)
+            CASE ( 'u_star' )      ; tvar%found = BSSOCIATED(u_star)
+            CASE ( 'Q_net' )       ; tvar%found = BSSOCIATED(Q_net)
+            CASE ( 'delzBlueIce' ) ; tvar%found = BSSOCIATED(delzBlueIce)
+            CASE ( 'delzWhiteIce') ; tvar%found = BSSOCIATED(delzWhiteIce)
 
             CASE ( 'sed_zones' )   ; tvar%found = BSSOCIATED(sed_zones)
             CASE ( 'sed_zone' )    ; tvar%found = BSSOCIATED(sed_zone)
@@ -1143,6 +1168,10 @@ SUBROUTINE define_column(icolm, col)
             CASE ( 'ss4' )         ; icolm(av)%cell => data(col)%ss4   ! For FV API 2.0 (To be connected to sed_conc)
 
             CASE ( 'taub' )        ; icolm(av)%cell_sheet => data(col)%layer_stress ! CAB? col_taub
+            CASE ( 'u_star' )      ; icolm(av)%cell_sheet => data(col)%u_star
+            CASE ( 'Q_net' )       ; icolm(av)%cell_sheet => data(col)%Q_net
+            CASE ( 'delzBlueIce' ) ; icolm(av)%cell_sheet => data(col)%delzBlueIce
+            CASE ( 'delzWhiteIce') ; icolm(av)%cell_sheet => data(col)%delzWhiteIce
 
             CASE ( 'sed_zones' )   ; icolm(av)%cell => data(col)%sed_zones
             CASE ( 'sed_zone' )    ; icolm(av)%cell_sheet => data(col)%sed_zone
@@ -1262,6 +1291,10 @@ SUBROUTINE define_zone_column(zcolm, zon)
             CASE ( 'ss4' )         ; zcolm(av)%cell => aedZones(:)%z_env%z_ss4
 
             CASE ( 'taub' )        ; zcolm(av)%cell_sheet => aedZones(zon)%z_env%z_layer_stress !CAB ??? (bot)
+            CASE ( 'u_star' )      ; zcolm(av)%cell_sheet => data(1)%u_star       ! lake-wide scalar (data is module-level)
+            CASE ( 'Q_net' )       ; zcolm(av)%cell_sheet => data(1)%Q_net        ! lake-wide scalar
+            CASE ( 'delzBlueIce' ) ; zcolm(av)%cell_sheet => data(1)%delzBlueIce  ! lake-wide scalar
+            CASE ( 'delzWhiteIce') ; zcolm(av)%cell_sheet => data(1)%delzWhiteIce ! lake-wide scalar
 
             CASE ( 'sed_zones' )   ; zcolm(av)%cell => aedZones(:)%z_env%z_sed_zones;
             CASE ( 'sed_zone' )    ; zcolm(av)%cell_sheet => aedZones(zon)%z_env%z_sed_zone; zone_var = av
@@ -1620,8 +1653,11 @@ CONTAINS
 
       CALL BioExtinction(icolm, nlev, bot, top, idata%bioextc(:))
       IF (.NOT. link_ext_par) THEN
-         ! Update the extinction coefficient for local light calculations
-         idata%extc(:) = idata%bioextc(:) + Kw
+         ! Update extinction for all layers except the surface (top).
+         ! glm_aed.F90 update_light writes extc(i) only for i = nlev-1 down to 1,
+         ! skipping the surface layer. Matching that here prevents over-attenuation
+         ! of shortwave in GLM's thermodynamics at the surface layer.
+         idata%extc(bot:top-1) = idata%bioextc(bot:top-1) + Kw
       ENDIF
       IF (.NOT. bioshade_feedback) THEN
          ! Disble the extinction coefficient feedback to the host
@@ -1666,12 +1702,22 @@ CONTAINS
    !
    !LOCALS
       INTEGER :: lev, zon, av, sv, sd, dir = 1
+      INTEGER :: layer_map_init(nlev)
       TYPE(aed_variable_t),POINTER :: tvar
       TYPE(aed_column_t),DIMENSION(:),POINTER :: column_sed    !# (n_aed_vars)
    !
    !----------------------------------------------------------------------------
    !BEGIN
       if (bot > top) dir = -1
+
+      !# (0) WATER COLUMN INITIALISATION — column-level init (e.g., bubble column setup)
+      IF ( glm_style_zones ) THEN
+         DO lev=1, nlev
+            layer_map_init(lev) = 1 + nlev - lev   ! top-to-bottom, matching GLM convention
+         ENDDO
+         CALL aed_initialize_column(icolm, layer_map_init)
+      ENDIF
+
       DO lev=bot, top, dir
          CALL aed_initialize(icolm, lev)
       ENDDO
@@ -1708,6 +1754,9 @@ CONTAINS
                      ENDIF
                   ENDIF
                ENDDO
+               !# Copy benthic state initial values from cc_hz to this zone's z_cc_hz
+               aedZones(zon)%z_cc_hz(1:n_vars_ben) = idata%cc_hz(1:n_vars_ben)
+
                CALL aed_initialize_benthic(column_sed, zon)
             ENDDO
          ENDIF
@@ -1736,7 +1785,7 @@ CONTAINS
    !
    !LOCALS
       INTEGER  :: lev,zon,v,av,sv,sd
-      AED_REAL :: scale
+      AED_REAL :: scale, cum_area
       AED_REAL :: localrainl, localshade, localdrag
       LOGICAL  :: splitZone
       TYPE(aed_variable_t),POINTER :: tvar
@@ -1851,7 +1900,8 @@ CONTAINS
             DO lev=zlev, nlev
               layer_map(lev) = zlev + nlev-lev
             ENDDO
-            CALL aed_calculate_column(column_sed, layer_map)
+            IF ( benthic_mode == 3 ) &
+               CALL aed_calculate_column(column_sed, layer_map)   ! only for riparian; bubble module needs full-wlev column
 
             IF ( benthic_mode == 3 ) THEN
                !# Zone is able to operated on by riparian and dry methods
@@ -1924,8 +1974,12 @@ CONTAINS
          !# i.e. don't flux out more than is there & distribute
          !# bottom flux into pelagic over bottom box (i.e., divide by layer height).
          !# scaled to proportion of layer area that is "bottom"
+         !# idata%area is incremental; accumulate running sum to get cumulative area,
+         !# matching glm_aed.F90 which uses cumulative area(lev) directly.
+         cum_area = zero_
          DO lev=1,nlev
-            IF (lev > 1) flux_pel(:, lev) = flux_pel(:, lev) * (idata%area(lev)-idata%area(lev-1))/idata%area(lev)
+            cum_area = cum_area + idata%area(lev)
+            IF (lev > 1) flux_pel(:, lev) = flux_pel(:, lev) * idata%area(lev)/cum_area
             DO v=1,n_vars
               IF ( idata%cc(v, 1) .GE. 0.0 ) flux_pel(v, lev) = &
                              max(-1.0 * idata%cc(v, lev), flux_pel(v, lev)/idata%dz(lev))
@@ -1972,6 +2026,12 @@ CONTAINS
 
       !# BENTHIC FLUXES
       IF ( glm_style_zones ) THEN
+         !# Water column column updating before zone benthic loop (bubble dissolution, etc.)
+         !# In GLM path, glm_benthics does not call aed_calculate_column on the water column
+         DO lev=1, nlev
+            layer_map(lev) = 1 + nlev - lev   ! top-to-bottom, matching GLM convention
+         ENDDO
+         CALL aed_calculate_column(icolm, layer_map)
          CALL glm_benthics(icolm, idata, nlev, bot)
       ELSE
          !# COLUMN
@@ -2155,6 +2215,13 @@ CONTAINS
 
       extc = extc + Kw
 
+      ! Write fresh extinction back to idata%extc (= host ExtcCoefSW) before
+      ! calculate_fluxes runs. glm_aed.F90 update_light does the same by writing
+      ! extc(i)=Kw+localext immediately, so that aed_calculate reads current
+      ! extinction in photosynthesis_irradiance (used for par_b, par_c, denominator).
+      ! Exclude the surface layer (top), matching GLM's update_light loop range.
+      idata%extc(bot:top-1) = extc(bot:top-1)
+
       localext = extc(top)
       zz = 0.001 !0.5*h_(1)    !MH: assume top of layer
       idata%par(top) = par_fraction * idata%rad(top) * EXP( -(localext)*zz )
@@ -2162,12 +2229,12 @@ CONTAINS
       IF (nlev <= 1) RETURN
 
       if (bot>top) dir = -1
-      ! Now set the top of subsequent layers, down to the bottom
+      ! Now set the top of subsequent layers, down to the bottom.
+      ! Attenuate using the extinction of the layer being traversed (lev+dir),
+      ! matching glm_aed.F90 update_light which uses extinc(i+1)*dz(i+1) to get par(i).
       DO lev = (top-dir), bot, -dir
-         localext = extc(lev)
-
          idata%par(lev) = &
-            idata%par(lev+dir) * EXP( -(localext) * idata%dz(lev+dir) )
+            idata%par(lev+dir) * EXP( -extc(lev+dir) * idata%dz(lev+dir) )
       ENDDO
    END SUBROUTINE Light
    !++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
