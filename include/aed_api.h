@@ -33,7 +33,7 @@
 #include "aed.h"
 #include "aed_api_env.h"
 
-#define AED_API_VERSION  "0.9.5"
+#define AED_API_VERSION  "0.9.6"
 
 #ifndef __STDC__
 #ifndef AED_REAL

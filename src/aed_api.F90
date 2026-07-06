@@ -186,6 +186,7 @@ MODULE aed_api
       AED_REAL,POINTER              :: bathy          => null()
       AED_REAL,POINTER              :: datum          => null()
       AED_REAL,POINTER              :: col_height     => null()
+
       AED_REAL,POINTER              :: nearest_height => null()
       INTEGER, POINTER              :: nearest_active => null()
 
@@ -277,6 +278,7 @@ MODULE aed_api
       AED_REAL,POINTER                :: bathy          => null()
       AED_REAL,POINTER                :: datum          => null()
       AED_REAL,POINTER                :: col_height     => null()
+
       AED_REAL,POINTER                :: nearest_height => null()
       INTEGER, POINTER                :: nearest_active => null()
 
@@ -342,10 +344,11 @@ MODULE aed_api
    !# External variables
    !-------------------------------------------------------------
    TYPE(api_col_data_t),DIMENSION(:),ALLOCATABLE,TARGET :: data
+
    !# Arrays for environmental variables (used if they are not supplied externally)
    AED_REAL,DIMENSION(:,:),ALLOCATABLE,TARGET :: lpar
 
-!# these two may be tuflow specific
+!# these two may be tuflow specific - dont seem to be used anywhere
    !# Maps to nearest cell with water (for riparian exchange)
    AED_REAL,DIMENSION(:),POINTER :: nearest_active => null()
    AED_REAL,DIMENSION(:),POINTER :: nearest_depth => null()
@@ -859,11 +862,8 @@ SUBROUTINE aed_set_model_env(env, ncols, nlevs)
       data(col)%rad          => env(col)%rad
 
       data(col)%extc         => env(col)%extc
-      IF (link_ext_par) THEN
-         data(col)%par       => env(col)%par
-      ELSE
-         data(col)%par       => lpar(:,col)
-      ENDIF
+      IF (link_ext_par) THEN ; data(col)%par => env(col)%par
+      ELSE                   ; data(col)%par => lpar(:,col) ; ENDIF
       data(col)%nir          => env(col)%nir
       data(col)%uva          => env(col)%uva
       data(col)%uvb          => env(col)%uvb
@@ -889,7 +889,7 @@ SUBROUTINE aed_set_model_env(env, ncols, nlevs)
       data(col)%mat_id       => env(col)%mat_id
 
       IF (no_bathy) THEN ; data(col)%bathy => bathy(col)
-      ELSE ;               data(col)%bathy => env(col)%bathy ; ENDIF
+      ELSE               ; data(col)%bathy => env(col)%bathy ; ENDIF
 
       data(col)%datum => env(col)%datum
       data(col)%col_height => env(col)%col_height
@@ -1342,7 +1342,7 @@ END SUBROUTINE define_zone_column
 !###############################################################################
 SUBROUTINE aed_run_model(nCols, nLevs, doSurface)
 !-------------------------------------------------------------------------------
-!                        nLevs is the number of levels used;
+!            nLevs is the number of levels used; -1 means varies between columns
 !-------------------------------------------------------------------------------
 !ARGUMENTS
    INTEGER,INTENT(in) :: nCols, nLevs
@@ -1376,12 +1376,7 @@ SUBROUTINE aed_run_model(nCols, nLevs, doSurface)
       ELSE
          idir = 1 ; idx_hi = itop ; idx_lo = ibot
          col_lev = idx_hi - idx_lo + 1
-     !   !# This for elcom & schism - may need changing for others
-     !   IF ( nLevs > col_lev ) THEN
-     !      ibot = nLevs - col_lev + 1 ; itop = nLevs
-     !   ELSE
-            ibot = 1 ; itop = col_lev
-     !   ENDIF
+         ibot = 1 ; itop = col_lev
       ENDIF
 
       CALL map_column(col, idx_lo, idx_hi, xcol, xdat)
@@ -1785,7 +1780,7 @@ CONTAINS
    !
    !LOCALS
       INTEGER  :: lev,zon,v,av,sv,sd
-      AED_REAL :: scale, cum_area
+      AED_REAL :: scale, cumu_area
       AED_REAL :: localrainl, localshade, localdrag
       LOGICAL  :: splitZone
       TYPE(aed_variable_t),POINTER :: tvar
@@ -1976,10 +1971,10 @@ CONTAINS
          !# scaled to proportion of layer area that is "bottom"
          !# idata%area is incremental; accumulate running sum to get cumulative area,
          !# matching glm_aed.F90 which uses cumulative area(lev) directly.
-         cum_area = zero_
+         cumu_area = zero_
          DO lev=1,nlev
-            cum_area = cum_area + idata%area(lev)
-            IF (lev > 1) flux_pel(:, lev) = flux_pel(:, lev) * idata%area(lev)/cum_area
+            cumu_area = cumu_area + idata%area(lev)
+            IF (lev > 1) flux_pel(:, lev) = flux_pel(:, lev) * idata%area(lev)/cumu_area
             DO v=1,n_vars
               IF ( idata%cc(v, 1) .GE. 0.0 ) flux_pel(v, lev) = &
                              max(-1.0 * idata%cc(v, lev), flux_pel(v, lev)/idata%dz(lev))
@@ -2275,7 +2270,7 @@ CONTAINS
 
 
    !############################################################################
-   SUBROUTINE BioDrag(icolm,nlev,bdrag)
+   SUBROUTINE BioDrag(icolm, nlev, bdrag)
    !----------------------------------------------------------------------------
    !
    ! Calculate the drag addition to be returned to the host model due to vegetation
