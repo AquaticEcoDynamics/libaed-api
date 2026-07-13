@@ -2084,7 +2084,7 @@ CONTAINS
    !
    !LOCALS
       TYPE(aed_variable_t),POINTER :: tv
-      INTEGER :: i, v, sv, lev
+      INTEGER :: i, v, sv, lev, zon
 #if DEBUG
       INTEGER :: last_naned = -1
 #endif
@@ -2131,6 +2131,31 @@ CONTAINS
             ENDIF
          ENDIF
       ENDDO
+
+      !# For zoned benthic runs the benthic STATE lives in each zone's z_cc_hz
+      !# (aedZones(zon)%z_cc_hz), not idata%cc_hz. The loop above only clamps the
+      !# single-column aggregate, so without this the per-zone benthic minima
+      !# (e.g. macroalgae p0) are never enforced and biomass can drain to 0.
+      IF ( benthic_mode > 1 ) THEN
+         DO zon = 1, aed_n_zones
+            sv = 0
+            DO i=1,n_aed_vars
+               IF ( aed_get_var(i, tv) ) THEN
+                  IF ( tv%var_type == V_STATE .AND. tv%sheet ) THEN
+                     sv = sv + 1
+                     IF ( .NOT. ieee_is_nan(tv%minimum) ) THEN
+                        IF ( aedZones(zon)%z_cc_hz(sv) < tv%minimum ) &
+                           aedZones(zon)%z_cc_hz(sv) = tv%minimum
+                     ENDIF
+                     IF ( .NOT. ieee_is_nan(tv%maximum) ) THEN
+                        IF ( aedZones(zon)%z_cc_hz(sv) > tv%maximum ) &
+                           aedZones(zon)%z_cc_hz(sv) = tv%maximum
+                     ENDIF
+                  ENDIF
+               ENDIF
+            ENDDO
+         ENDDO
+      ENDIF
 
 #if DEBUG
       IF ( last_naned > -1 ) THEN
