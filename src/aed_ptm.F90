@@ -81,10 +81,11 @@ MODULE aed_ptm
    INTEGER :: aed_n_groups
    TYPE(aed_part_group_t),DIMENSION(:),POINTER :: particle_groups
 
-   CINTEGER,DIMENSION(:,:,:),ALLOCATABLE, TARGET :: ptm_istat       !# AED particle data structure (NGroups,NParticles,NAttributes)
-   AED_REAL,DIMENSION(:,:,:),ALLOCATABLE, TARGET :: ptm_env         !# AED particle data structure (NGroups,NParticles,NAttributes)
-   AED_REAL,DIMENSION(:,:,:),ALLOCATABLE, TARGET :: ptm_state       !# AED particle data structure (NGroups,NParticles,NAttributes)
-   AED_REAL,DIMENSION(:,:,:),ALLOCATABLE, TARGET :: ptm_diag        !# AED particle data structure (NGroups,NParticles,NAttributes)
+   CINTEGER,DIMENSION(:,:,:),ALLOCATABLE,TARGET :: ptm_istat
+                                                             !# AED particle data structure (NGroups,NParticles,NAttributes)
+   AED_REAL,DIMENSION(:,:,:),ALLOCATABLE,TARGET :: ptm_env   !# AED particle data structure (NGroups,NParticles,NAttributes)
+   AED_REAL,DIMENSION(:,:,:),ALLOCATABLE,TARGET :: ptm_state !# AED particle data structure (NGroups,NParticles,NAttributes)
+   AED_REAL,DIMENSION(:,:,:),ALLOCATABLE,TARGET :: ptm_diag  !# AED particle data structure (NGroups,NParticles,NAttributes)
 
    INTEGER, PARAMETER :: n_ptm_istat = 6
    INTEGER, PARAMETER :: n_ptm_env   = 5

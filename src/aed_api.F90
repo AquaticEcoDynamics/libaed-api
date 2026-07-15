@@ -592,7 +592,7 @@ INTEGER FUNCTION aed_configure_models(fname, NumWQ_Vars, NumWQ_Ben,            &
 #endif
 
    IF ( loud ) THEN
-      print "(/,5X,'AED : MaxLayers   = ',I4)",MaxLayers
+   !  print "(/,5X,'AED : MaxLayers   = ',I4)",MaxLayers
 
       print "(/,5X,'AED : n_aed_vars  = ',I4,' ; n_vars            = ',I4)",n_aed_vars,n_vars
       print "(  5X,'AED : n_vars_ben  = ',I4,' ; n_ptm_vars        = ',I4)",n_vars_ben,n_ptm_vars
@@ -926,7 +926,7 @@ SUBROUTINE aed_set_model_env(env, ncols, nlevs)
    IF (BSSOCIATED(evap))           tv=aed_provide_sheet_global('evap',          'evaporation',           'm/s'     )
    IF (BSSOCIATED(I_0))            tv=aed_provide_sheet_global('par_sf',        'par_sf',                'W/m2'    )
 
-   IF (BSSOCIATED(col_depth))      tv=aed_provide_sheet_global('col_depth',     'column water depth',    'm above bottom')
+   IF (BSSOCIATED(col_depth))      tv=aed_provide_sheet_global('col_depth',     'column water depth', 'm above bottom')
    IF (BSSOCIATED(depth))          tv=aed_provide_global      ('depth',         'depth',                 'm'       )
    IF (BSSOCIATED(col_area))       tv=aed_provide_sheet_global('col_area',      'column area',           'm2'      )
    IF (BSSOCIATED(area))           tv=aed_provide_global      ('layer_area',    'layer area',            'm2'      )
@@ -1167,7 +1167,7 @@ SUBROUTINE define_column(icolm, col)
             CASE ( 'ss3' )         ; icolm(av)%cell => data(col)%ss3   ! For FV API 2.0 (To be connected to sed_conc)
             CASE ( 'ss4' )         ; icolm(av)%cell => data(col)%ss4   ! For FV API 2.0 (To be connected to sed_conc)
 
-            CASE ( 'taub' )        ; icolm(av)%cell_sheet => data(col)%layer_stress ! CAB? col_taub
+            CASE ( 'taub' )        ; icolm(av)%cell_sheet => data(col)%layer_stress
             CASE ( 'u_star' )      ; icolm(av)%cell_sheet => data(col)%u_star
             CASE ( 'Q_net' )       ; icolm(av)%cell_sheet => data(col)%Q_net
             CASE ( 'delzBlueIce' ) ; icolm(av)%cell_sheet => data(col)%delzBlueIce
@@ -1176,12 +1176,6 @@ SUBROUTINE define_column(icolm, col)
             CASE ( 'sed_zones' )   ; icolm(av)%cell => data(col)%sed_zones
             CASE ( 'sed_zone' )    ; icolm(av)%cell_sheet => data(col)%sed_zone
 
-     ! CAB: Not handled yet
-     !      CASE ( 'material' )    ; IF ( do_zone_averaging ) THEN
-     !                                  icolm(av)%cell_sheet => zone(zm(col))
-     !                               ELSE
-     !                                  icolm(av)%cell_sheet => mat(col)
-     !                               ENDIF
             CASE ( 'material' )    ; icolm(av)%cell_sheet => data(col)%mat_id
 
             CASE ( 'bathy' )       ; icolm(av)%cell_sheet => data(col)%bathy
@@ -1290,7 +1284,7 @@ SUBROUTINE define_zone_column(zcolm, zon)
             CASE ( 'ss3' )         ; zcolm(av)%cell => aedZones(:)%z_env%z_ss3
             CASE ( 'ss4' )         ; zcolm(av)%cell => aedZones(:)%z_env%z_ss4
 
-            CASE ( 'taub' )        ; zcolm(av)%cell_sheet => aedZones(zon)%z_env%z_layer_stress !CAB ??? (bot)
+            CASE ( 'taub' )        ; zcolm(av)%cell_sheet => aedZones(zon)%z_env%z_layer_stress
             CASE ( 'u_star' )      ; zcolm(av)%cell_sheet => data(1)%u_star       ! lake-wide scalar (data is module-level)
             CASE ( 'Q_net' )       ; zcolm(av)%cell_sheet => data(1)%Q_net        ! lake-wide scalar
             CASE ( 'delzBlueIce' ) ; zcolm(av)%cell_sheet => data(1)%delzBlueIce  ! lake-wide scalar
