@@ -2207,6 +2207,7 @@ CONTAINS
    !
    !LOCAL VARIABLES:
       INTEGER  :: lev, dir = -1
+      AED_REAL :: extc(1:nlev)
       AED_REAL :: zz, localext
    !
    !----------------------------------------------------------------------------
@@ -2214,16 +2215,18 @@ CONTAINS
       zz = zero_
       localext = zero_
 
-      CALL BioExtinction(icolm, nlev, bot, top, idata%extc)
+      CALL BioExtinction(icolm, nlev, bot, top, extc)
+
+      extc = extc + Kw
 
       ! Write fresh extinction back to idata%extc (= host ExtcCoefSW) before
       ! calculate_fluxes runs. glm_aed.F90 update_light does the same by writing
       ! extc(i)=Kw+localext immediately, so that aed_calculate reads current
       ! extinction in photosynthesis_irradiance (used for par_b, par_c, denominator).
       ! Exclude the surface layer (top), matching GLM's update_light loop range.
-!     idata%extc(bot:top-1) = extc(bot:top-1)
+      idata%extc(bot:top-1) = extc(bot:top-1)
 
-      localext = idata%extc(top)
+      localext = extc(top)
       zz = 0.001 !0.5*h_(1)    !MH: assume top of layer
       idata%par(top) = par_fraction * idata%I_0 * EXP( -(localext)*zz )
 
@@ -2234,7 +2237,7 @@ CONTAINS
       ! Attenuate using the extinction of the layer being traversed (lev+dir),
       ! matching glm_aed.F90 update_light which uses extinc(i+1)*dz(i+1) to get par(i).
       DO lev = (top+dir), bot, dir
-         idata%par(lev) = idata%par(lev-dir) * EXP( -(idata%extc(lev)) * idata%dz(lev) )
+         idata%par(lev) = idata%par(lev-dir) * EXP( -extc(lev-dir) * idata%dz(lev-dir) )
       ENDDO
    END SUBROUTINE Light
    !++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
