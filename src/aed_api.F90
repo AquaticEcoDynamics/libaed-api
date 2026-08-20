@@ -407,6 +407,14 @@ MODULE aed_api
    AED_REAL,DIMENSION(:,:),ALLOCATABLE :: flux_pel_pre !# (n_vars+n_vars_ben, MAX(n_layers, aed_n_zones))
    AED_REAL,DIMENSION(:,:),ALLOCATABLE :: flux_pel_z   !# (n_vars+n_vars_ben, MAX(n_layers, aed_n_zones))
 
+   !# flux_pel_ptm holds the particle<->water exchange flux computed once per
+   !# host step by aed_calculate_particles, captured from a clean (zeroed)
+   !# flux_pel immediately after that call. calculate_fluxes unconditionally
+   !# resets/recomputes flux_pel from kinetics alone on every split, so this
+   !# snapshot is re-added back in afterwards (see aed_run_column) - otherwise
+   !# the particle-driven flux would never reach the state-variable update.
+   AED_REAL,DIMENSION(:,:),ALLOCATABLE,SAVE :: flux_pel_ptm
+
 #ifdef f2003
    USE, intrinsic :: iso_fortran_env, ONLY : stdin=>input_unit, &
                                              stdout=>output_unit, &
@@ -1419,7 +1427,20 @@ SUBROUTINE aed_run_model(nCols, nLevs, doSurface)
             IF ( .NOT. link_ext_par) &
                CALL Light(xcol, xdat, col_lev, ibot, itop)
 
+            !# Start from a clean flux_pel: nothing zeroes this array between
+            !# host steps (calculate_fluxes only resets it on entry, which is
+            !# further downstream in aed_run_column below), so without this it
+            !# would still hold the previous step's fully-computed kinetics
+            !# flux and contaminate the particle-only snapshot taken below.
+            flux_pel = zero_
             CALL aed_calculate_particles(xcol, col_lev, idx_lo, idx_hi, col)
+
+            !# Capture the clean particle<->water exchange flux so it can be
+            !# re-applied after calculate_fluxes (called from aed_run_column,
+            !# below) resets/recomputes flux_pel from kinetics alone.
+            IF ( .NOT. ALLOCATED(flux_pel_ptm) ) &
+               ALLOCATE(flux_pel_ptm(SIZE(flux_pel,1), SIZE(flux_pel,2)))
+            flux_pel_ptm = flux_pel
          ENDIF
 
          !----------------------------------------------------------------------
@@ -1625,6 +1646,16 @@ CONTAINS
 
          !# Time-integrate one biological time step
          CALL calculate_fluxes(icolm, idata, nlev, bot, top, doSurface)
+
+         !# calculate_fluxes just reset flux_pel to kinetics/benthic/surface
+         !# exchange only. Re-apply the particle<->water exchange flux
+         !# computed once per host step by aed_calculate_particles (captured
+         !# into flux_pel_ptm in aed_run_model, above) on every split - it
+         !# would otherwise never reach the state-variable update below.
+         IF ( do_particle_bgc ) THEN
+            IF ( ALLOCATED(flux_pel_ptm) ) &
+               flux_pel(1:n_vars,1:nlev) = flux_pel(1:n_vars,1:nlev) + flux_pel_ptm(1:n_vars,1:nlev)
+         ENDIF
 
          !# Update the water column layers
          idata%cc(1:n_vars, :) = idata%cc(1:n_vars, :) + &
@@ -2008,6 +2039,10 @@ CONTAINS
    !
    !----------------------------------------------------------------------------
    !BEGIN
+      !# flux_pel is reset and rebuilt from kinetics/benthic/surface exchange
+      !# alone here; any particle<->water exchange flux captured earlier this
+      !# host step (flux_pel_ptm, see aed_run_model) is re-applied afterwards
+      !# in aed_run_column, once this subroutine returns.
       flux_pel = zero_
       flux_atm = zero_
       flux_ben = zero_
