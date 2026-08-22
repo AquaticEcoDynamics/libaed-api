@@ -87,7 +87,12 @@ MODULE aed_ptm
    AED_REAL,DIMENSION(:,:,:),ALLOCATABLE,TARGET :: ptm_state !# AED particle data structure (NGroups,NParticles,NAttributes)
    AED_REAL,DIMENSION(:,:,:),ALLOCATABLE,TARGET :: ptm_diag  !# AED particle data structure (NGroups,NParticles,NAttributes)
 
-   INTEGER, PARAMETER :: n_ptm_istat = 6
+   ! Was 6 (STAT,IDX2,IDX3,LAYR,FLAG,PTID). Bumped to 7 for aed_phyto_abm's GRP
+   ! attribute (which phyto species/group a particle belongs to, added to support
+   ! multiple phytoplankton groups in the ABM) - GRP=7 is written/read via
+   ! p(i)%ptm_istat(GRP) in aed_phyto_abm.F90, so the underlying array must be at
+   ! least that large or it's an out-of-bounds write into whatever memory follows.
+   INTEGER, PARAMETER :: n_ptm_istat = 7
    INTEGER, PARAMETER :: n_ptm_env   = 5
    INTEGER            :: n_ptm_vars  = 0
    INTEGER            :: aed_n_particles
