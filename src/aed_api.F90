@@ -144,6 +144,7 @@ MODULE aed_api
       AED_REAL,DIMENSION(:),POINTER :: depth          => null() !# layer_depth (previously "z")
       AED_REAL,DIMENSION(:),POINTER :: area           => null() !# area : layer area
       AED_REAL,DIMENSION(:),POINTER :: dz             => null() !# thick : layer thickness (previously "layer_ht")
+      AED_REAL,DIMENSION(:),POINTER :: vol            => null() !# TRUE layer volume from the host's hypsograph (NOT dz*area)
 
       !# water column hydrodynamic information
       AED_REAL,DIMENSION(:),POINTER :: temp           => null() !# temperature
@@ -239,6 +240,7 @@ MODULE aed_api
       AED_REAL,DIMENSION(:),POINTER   :: depth          => null() !# depth at top of layers (n_layers)
       AED_REAL,DIMENSION(:),POINTER   :: area           => null() !# area of layers (n_layers)
       AED_REAL,DIMENSION(:),POINTER   :: dz             => null() !# vertical thickness of layers (n_layers)
+      AED_REAL,DIMENSION(:),POINTER   :: vol            => null() !# TRUE layer volume (n_layers), from the host hypsograph
 
       !# Arrays storing/pointing to water column environment
       AED_REAL,DIMENSION(:),POINTER   :: temp           => null()
@@ -862,6 +864,7 @@ SUBROUTINE aed_set_model_env(env, ncols, nlevs)
       data(col)%depth        => env(col)%depth
       data(col)%area         => env(col)%area
       data(col)%dz           => env(col)%dz
+      data(col)%vol          => env(col)%vol
 
       data(col)%temp         => env(col)%temp
       data(col)%salt         => env(col)%salt
@@ -940,6 +943,7 @@ SUBROUTINE aed_set_model_env(env, ncols, nlevs)
    IF (BSSOCIATED(col_area))       tv=aed_provide_sheet_global('col_area',      'column area',           'm2'      )
    IF (BSSOCIATED(area))           tv=aed_provide_global      ('layer_area',    'layer area',            'm2'      )
    IF (BSSOCIATED(dz))             tv=aed_provide_global      ('layer_ht',      'layer heights',         'm'       )
+   IF (BSSOCIATED(vol))            tv=aed_provide_global      ('layer_vol',    'layer volume',          'm3'      )
 
    IF (BSSOCIATED(temp))           tv=aed_provide_global      ('temperature',   'temperature',           'celsius' )
    IF (BSSOCIATED(salt))           tv=aed_provide_global      ('salinity',      'salinity',              'g/kg'    )
@@ -1047,6 +1051,7 @@ SUBROUTINE aed_check_model_setup
             CASE ( 'col_area' )    ; tvar%found = BSSOCIATED(col_area)
             CASE ( 'layer_area' )  ; tvar%found = BSSOCIATED(area)
             CASE ( 'layer_ht' )    ; tvar%found = BSSOCIATED(dz)
+            CASE ( 'layer_vol' )   ; tvar%found = BSSOCIATED(vol)
 
             CASE ( 'temperature' ) ; tvar%found = BSSOCIATED(temp)
             CASE ( 'salinity' )    ; tvar%found = BSSOCIATED(salt)
@@ -1164,6 +1169,7 @@ SUBROUTINE define_column(icolm, col)
             CASE ( 'col_area' )    ; icolm(av)%cell_sheet => data(col)%col_area
             CASE ( 'layer_area' )  ; icolm(av)%cell => data(col)%area
             CASE ( 'layer_ht' )    ; icolm(av)%cell => data(col)%dz
+            CASE ( 'layer_vol' )   ; icolm(av)%cell => data(col)%vol
 
             CASE ( 'temperature' ) ; icolm(av)%cell => data(col)%temp
             CASE ( 'salinity' )    ; icolm(av)%cell => data(col)%salt
@@ -1492,6 +1498,7 @@ CONTAINS
       data_out%depth     => data(col_no)%depth(lo_idx:hi_idx)
       data_out%area      => data(col_no)%area(lo_idx:hi_idx)
       data_out%dz        => data(col_no)%dz(lo_idx:hi_idx)
+      data_out%vol       => data(col_no)%vol(lo_idx:hi_idx)
 
       data_out%temp      => data(col_no)%temp(lo_idx:hi_idx)
       data_out%salt      => data(col_no)%salt(lo_idx:hi_idx)
