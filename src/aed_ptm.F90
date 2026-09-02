@@ -36,7 +36,7 @@ MODULE aed_ptm
 
    USE ISO_C_BINDING
    USE aed_common
-   USE aed_core, ONLY:  aed_ptm_t
+   USE aed_core, ONLY:  aed_ptm_t, aed_ptm_dt_days
 
    IMPLICIT NONE
 
@@ -229,7 +229,7 @@ SUBROUTINE Particles(n_cells)
    INTEGER :: lev, grp, prt, n, pt, NU
    INTEGER :: ppid
    AED_REAL,DIMENSION(20) :: zz
-   INTEGER :: cell, j, ii, count_check
+   INTEGER :: cell, j
    AED_REAL :: dt = 3600
 
    TYPE (aed_ptm_t) :: ptm
@@ -241,68 +241,66 @@ SUBROUTINE Particles(n_cells)
    zz = zero_
 
 !------------
-   !print*,"PTM START", aed_n_groups, aed_n_particles
-
+   ! Bin every active particle into all_particles(cell), the per-cell lists that
+   ! aed_calculate_particles consumes. Two bugs fixed here (2026-08):
+   !
+   ! 1. STAT predicate. glm_ptm.c writes STAT=0 for an inactive/dead slot and STAT=1
+   !    for active (see e.g. ptm_init_glm, ptm_removeparticles); STAT is never negative
+   !    at runtime (see the -9999 fill in aed_ptm_init - it exists to mark an
+   !    unassigned PTID, not STAT, and every STAT slot is overwritten with 0 before the
+   !    first timestep). >= 0 / < 0 therefore tested the wrong sentinel: >= 0 admitted
+   !    BOTH active and inactive particles, and the `< 0 CYCLE` below never fired.
+   !    Corrected to > 0 / <= 0.
+   !
+   ! 2. Counting and populating must be TWO FULL PASSES OVER ALL GROUPS, not nested
+   !    per-group. The previous structure allocated all_particles(cell)%prt sized at
+   !    whichever group's count reached that cell first (guarded by
+   !    .NOT. ALLOCATED(...%prt)), then never re-sized it as later groups added to
+   !    %count - so with more than one group, particles from every group after the
+   !    first were silently dropped by the `j <= %count` bound below. Harmless with a
+   !    single group (the only configuration this has ever been run with until
+   !    num_phytos > 1), which is why it went unnoticed.
    DO cell=1, size(all_particles)
       IF (ALLOCATED(all_particles(cell)%prt)) DEALLOCATE(all_particles(cell)%prt)
       all_particles(cell)%count = 0
+      all_particles(cell)%n = 0   !# reset unconditionally - was left stale for any
+                                   !# cell that emptied out since the previous step,
+                                   !# since it was previously reset only inside the
+                                   !# "not yet allocated" branch of the populate pass.
    ENDDO
-   count_check = 0
-   DO grp=1,aed_n_groups
-      !print*,"PTM GRP", grp
 
-      ! First, loop through all particles, and count how mnay are in each cell
+   ! Pass 1: count every active particle, across ALL groups, before allocating anything.
+   DO grp=1,aed_n_groups
       DO prt=1,aed_n_particles
-        !IF (prt<30) print *,'STAT', prt,ptm_istat(grp,prt,STAT),ptm_istat(grp,prt,IDX3)
-         IF ( ptm_istat(grp,prt,STAT) >= 0 ) THEN
+         IF ( ptm_istat(grp,prt,STAT) > 0 ) THEN
             cell = ptm_istat(grp,prt,IDX3)
             IF ( cell >= 1 .AND. cell <= size(all_particles) ) THEN
                all_particles(cell)%count = all_particles(cell)%count + 1
-           !ELSE
-           !   print*,"idx out of range", i, size(all_particles)
-           !   stop
             ENDIF
          ENDIF
       ENDDO
-      DO ii=1,n_cells
-          count_check = count_check+all_particles(ii)%count
-          !print*,"PTM CELL", ii, all_particles(ii)%count
-      ENDDO
-      !print*,"PTM CHK", count_check
+   ENDDO
 
-!  ENDDO
-!  DO grp=1,num_groups
-      ! Now, loop through all particles, and populate the particle-cell object
+   DO cell=1, size(all_particles)
+      IF (all_particles(cell)%count > 0) THEN
+         ALLOCATE(all_particles(cell)%prt(all_particles(cell)%count))
+      ENDIF
+   ENDDO
+
+   ! Pass 2: now that every cell's list is sized for its TOTAL across all groups,
+   ! populate it - a second full pass over all groups, not resumed from pass 1.
+   DO grp=1,aed_n_groups
       DO prt=1,aed_n_particles
-         IF ( ptm_istat(grp,prt,STAT) < 0 ) CYCLE  !# ignore these
+         IF ( ptm_istat(grp,prt,STAT) <= 0 ) CYCLE  !# ignore inactive particles
 
          cell = ptm_istat(grp,prt,IDX3)
          IF ( cell >= 1 .AND. cell <= size(all_particles) ) THEN
-            ! If the particle is in a cell, first check if the particle-cell
-            ! object is already allocated. If not, allocate it and init n to 0
-            IF (.NOT. ALLOCATED(all_particles(cell)%prt)) THEN
-               ALLOCATE(all_particles(cell)%prt(all_particles(cell)%count))
-               all_particles(cell)%n = 0
-            ENDIF
-            ! Increment the new particle that was found in the particle-cell object
-            ! and if this is less than the total count, add the new particle to the list
             j = all_particles(cell)%n + 1              ! add new particle
             IF (j <= all_particles(cell)%count ) THEN
                all_particles(cell)%prt(j)%grp = grp
                all_particles(cell)%prt(j)%idx = prt
                all_particles(cell)%n = j
-               !print*,"PTM", grp, prt, cell, j, all_particles(cell)%count
-           !ELSE
-           !   print*,"Ooops, error in PTM", j, all_particles(i)%count
             ENDIF
-!        ELSE
-!           print*,"idx out of range", i, size(all_particles)
-!           print*,"grp", grp, " prt ",prt
-!           print*,"istat 1", particle_groups(grp)%istat(1,prt)
-!           print*,"istat 2", particle_groups(grp)%istat(2,prt)
-!           print*,"istat 3", particle_groups(grp)%istat(3,prt)
-!           print*,"istat 4", particle_groups(grp)%istat(4,prt)
-!           stop
          ENDIF
       ENDDO ! particles
    ENDDO    ! groups
@@ -337,7 +335,7 @@ END SUBROUTINE aed_ptm_set_cell_map
 
 
 !###############################################################################
-SUBROUTINE aed_calculate_particles(icolm, nlev, idx_lo, idx_hi, col_no)
+SUBROUTINE aed_calculate_particles(icolm, nlev, idx_lo, idx_hi, col_no, dt_days)
 !-------------------------------------------------------------------------------
 !
 ! Calculate biogeochemical transformations on particles for a single column.
@@ -355,6 +353,11 @@ SUBROUTINE aed_calculate_particles(icolm, nlev, idx_lo, idx_hi, col_no)
    INTEGER,INTENT(in)               :: nlev          !# layers in this column (= idx_hi-idx_lo+1)
    INTEGER,INTENT(in)               :: idx_lo,idx_hi !# host layer index range of this column
    INTEGER,INTENT(in)               :: col_no        !# host column number (for the cell map)
+   !# Biological timestep for THIS call, in days. The host must pass the
+   !# interval it is actually advancing over - the full host step if this is
+   !# called once per step, or dt_eff/secs_per_day if called once per
+   !# split_factor sub-step. Omitting it leaves the previous hourly default.
+   AED_REAL,INTENT(in),OPTIONAL     :: dt_days
 !
 !LOCAL VARIABLES:
    INTEGER :: lev, lyr, gc, grp, prt, pt
@@ -365,6 +368,10 @@ SUBROUTINE aed_calculate_particles(icolm, nlev, idx_lo, idx_hi, col_no)
 !-------------------------------------------------------------------------------
 
 !BEGIN
+   !# Publish this call's biological timestep for the particle BGC models to
+   !# read (aed_core%aed_ptm_dt_days). Set before the models run, not after.
+   IF ( PRESENT(dt_days) ) aed_ptm_dt_days = dt_days
+
    IF (aed_n_groups == 0 .OR. aed_n_particles == 0) RETURN
 
    DO lev=1,nlev
@@ -379,12 +386,17 @@ SUBROUTINE aed_calculate_particles(icolm, nlev, idx_lo, idx_hi, col_no)
       IF ( gc < 1 .OR. gc > size(all_particles) ) CYCLE
       layer_particles => all_particles(gc)
 
-      !print *, "ptm", lev, gc, layer_particles%count
-      IF (layer_particles%count == 0) CYCLE
+      ! Iterate %n (the number of slots pass 2 of Particles() actually FILLED), not
+      ! %count (the number pass 1 allocated %prt for). The two now always agree since
+      ! Particles() was fixed to a genuine two-pass count-then-populate structure, but
+      ! %n is the correct one to depend on: %prt is a freshly-ALLOCATEd INTEGER array,
+      ! and any future divergence between the passes would otherwise feed an
+      ! uninitialised subscript straight into the pointer associations below.
+      IF (layer_particles%n == 0) CYCLE
 
-      ALLOCATE(ptm(layer_particles%count))
+      ALLOCATE(ptm(layer_particles%n))
 
-      DO pt=1,layer_particles%count
+      DO pt=1,layer_particles%n
 
          ! Retrieve particle properties, from the particle-cell object
          grp = layer_particles%prt(pt)%grp ; prt = layer_particles%prt(pt)%idx
@@ -396,7 +408,7 @@ SUBROUTINE aed_calculate_particles(icolm, nlev, idx_lo, idx_hi, col_no)
          ptm(pt)%ptm_diag  => ptm_diag(grp,prt,:)
 
       ENDDO !end particle loop
-      ppid = layer_particles%count
+      ppid = layer_particles%n
 
       ! Pass the particles in this cell to AED modules
       CALL aed_particle_bgc(icolm,lev,ppid,p=ptm) ! Note: ppid getting incremeted in here
@@ -455,6 +467,20 @@ SUBROUTINE Particles_zz(column, count, parts)
 !
 ! Calculate biogeochemical transformations on particles
 !
+! DEAD CODE (2026-08). Not in this module's PUBLIC list and called from nowhere in
+! the tree - its only real work call (aed_particle_bgc, below) is commented out, so
+! it currently does nothing but copy values out of particle_groups and back again.
+! Retained for reference only.
+!
+! It carried the same two bugs fixed in Particles() above, and they are corrected
+! here too so this routine cannot reintroduce them if it is ever revived:
+!   1. the status predicate was `>= 0`, admitting inactive particles (status 0);
+!      every live consumer tests `> 0` (see the STAT predicate note in Particles()).
+!   2. the per-cell loop ran to parts(lev)%count (the ALLOCATED size) rather than
+!      parts(lev)%n (the FILLED count) - the same %count-vs-%n hazard fixed in
+!      aed_calculate_particles above.
+! If this is revived, re-verify both against the current Particles() /
+! aed_calculate_particles first.
 !-------------------------------------------------------------------------------
 !ARGUMENTS
    TYPE (aed_column_t), INTENT(inout) :: column(:)
@@ -478,13 +504,13 @@ SUBROUTINE Particles_zz(column, count, parts)
 
       ppid = 0          ! new cell identifier, to allow cumulation of prts
 
-      DO pt=1,parts(lev)%count
+      DO pt=1,parts(lev)%n            !# was %count - see the DEAD CODE note above
 
          grp = parts(lev)%prt(pt)%grp ; prt = parts(lev)%prt(pt)%idx
          stat = particle_groups(grp)%idx_stat   ! should be 1
          idxi3 =  particle_groups(grp)%idx_3   ! should be 3
 
-         IF ( particle_groups(grp)%status(stat, prt) >= 0 ) THEN
+         IF ( particle_groups(grp)%status(stat, prt) > 0 ) THEN   !# was >= 0 - see above
             NU = ubound(particle_groups(grp)%vars, 1)
             n = min(16, size(particle_groups(grp)%prop(:,prt)))
 

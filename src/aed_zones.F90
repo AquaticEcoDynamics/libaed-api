@@ -56,6 +56,7 @@ MODULE aed_zones
       AED_REAL :: z_dz
       AED_REAL :: z_col_area
       AED_REAL :: z_area
+      AED_REAL :: z_vol
       AED_REAL :: z_depth
       AED_REAL :: z_col_depth
 
