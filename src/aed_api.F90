@@ -1456,7 +1456,34 @@ CONTAINS
 
       DO av=1,n_aed_vars
          !#========================================================#!
-         col_out(av)%cell     => all_cols(av,col_no)%cell
+         !# Rebase %cell so index 1 is this column's BOTTOM layer, because the
+         !# models are handed LOCAL layer indices: calculate_fluxes builds
+         !# layer_map(lev)=lev, and the caller remaps bot/top to 1..col_lev. So
+         !# _STATE_VAR_(id) = cell(layer_idx) must be local-indexed too, as every
+         !# data_out field below already is.
+         !#
+         !# Leaving it unrebased only works when lo_idx==1 - true for GLM, whose
+         !# columns start at the bed, but not for a host whose column sits at an
+         !# offset within a taller grid (ELCOM: bot_idx is the bed's absolute
+         !# level, e.g. 40 of 64). There every model silently read layers below
+         !# the bed - finite-but-wrong for the water-column models, and fatal for
+         !# aed_phyto_abm, which divides by layer_vol and got 0 from a dry cell.
+         !#
+         !# (lo_idx:) rather than (lo_idx:hi_idx): rebasing the origin is the whole
+         !# fix, so leave the upper extent alone rather than also changing what a
+         !# host can see above its current surface. It is then exactly the original
+         !# array when lo_idx==1, i.e. provably a no-op for GLM (verified: the
+         !# 3.5-year paper_sim run is bit-identical).
+         IF ( ASSOCIATED(all_cols(av,col_no)%cell) ) THEN
+            IF ( UBOUND(all_cols(av,col_no)%cell,1) >= lo_idx ) THEN
+               col_out(av)%cell  => all_cols(av,col_no)%cell(lo_idx:)
+            ELSE
+               !# short array (e.g. the tuflow 'par' fudge noted below) - leave as is
+               col_out(av)%cell  => all_cols(av,col_no)%cell
+            ENDIF
+         ENDIF
+         !# flux_pel is a module scratch array already dimensioned per local
+         !# level (see its ALLOCATE), so it must NOT be sliced.
          col_out(av)%flux_pel => all_cols(av,col_no)%flux_pel
          !#========================================================#!
       ENDDO
