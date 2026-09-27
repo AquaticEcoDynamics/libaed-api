@@ -2295,6 +2295,9 @@ CONTAINS
 
       localext = extc(top)
       zz = 0.001 !0.5*h_(1)    !MH: assume top of layer
+      !  I_0 = net shortwave just below the surface; rad is optional and not bound
+      !  by all hosts (null in TUFLOW-FV).  GLM currently binds gross shortwave to
+      !  I_0 (~7% over-light) -- to be fixed in glm_api_aed, see LIGHT_PLAN.md D2.
       idata%par(top) = par_fraction * idata%I_0 * EXP( -(localext)*zz )
 
       IF (nlev <= 1) RETURN
