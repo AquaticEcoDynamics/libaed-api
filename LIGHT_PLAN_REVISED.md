@@ -46,6 +46,7 @@ returns to them), and calibration changes to module coefficients.
 | A5 — D14 accumulate (macrophyte, vegetation) | Edited, uncommitted, awaiting VM build |
 | A7 — drop `slingo_const.h` from vfproj | Edited, uncommitted (same file as A2; committed after A2) |
 | A8 — this plan | Committed |
+| A9 — D4/D15 check | **TUFLOW-FV confirmed** on Conjimba `_11` (§3.5). ELCOM and the baselines still to do |
 | Everything else | Not started |
 
 Unrelated local changes to keep out of light commits:
@@ -113,7 +114,7 @@ The `bot:top-1` rule is GLM's `update_light` behaviour embedded in shared code.
 | **D1** | Blocker | `Light` used `rad(top)`, null in TUFLOW-FV → segfault | **Fixed** (Stage 0) |
 | **D2** | High | GLM binds Q1 (gross) to `I_0`; API path over-lights ~7% | host fix, §7 GLM |
 | **D3** | High, latent | SCHISM binds zeros to `rad` | host fix, §7 |
-| **D4** | High, **verify** | `bot:top-1` is empty for top-down hosts (`nlev:0`) and for 1-layer columns (`1:0`): feedback and `extc` write-back never reach TUFLOW-FV/ELCOM or 2D columns | orientation normalised in `link_column` (§5.4) |
+| **D4** | High — **confirmed for 1-layer TUFLOW-FV** (§3.5); top-down 3D and ELCOM to verify | `bot:top-1` is empty for top-down hosts (`nlev:0`) and for 1-layer columns (`1:0`): feedback and `extc` write-back never reach TUFLOW-FV/ELCOM or 2D columns | orientation normalised in `link_column` (§5.4) |
 | **D5** | High, latent | naive D4 fix would write `Kw+bio` into TUFLOW-FV `bioshade` → double background | bio-only feedback (§5.8) |
 | **D6** | Medium | API overwrites host `nir/uva/uvb` and derives them by scaling PAR | band views (§5.4) |
 | **D7** | Medium | ELCOM computes band light but `link_ext_par` is forced off → two light fields | host mode (§5.3) |
@@ -124,10 +125,34 @@ The `bot:top-1` rule is GLM's `update_light` behaviour embedded in shared code.
 | **D12** | Low | ELCOM ignores nml `par_frac` | **A6** |
 | **D13** | Low | ELCOM `I_0` may be raw met (gross) | host verify (§7) |
 | **D14** | Low, **latent** | macrophyte (`:1551/1558`) and vegetation (`:926`) *assign* to the extinction accumulator. Their bindings are commented out (`aed_macrophyte.F90:187`, disabled in `37797cd` "csiem 1.5 temp updates", 2025-10-22; `aed_vegetation.F90:150` never bound; `aed_habitat.F90:98` likewise, and its body is commented out), so the code never runs today | **A5**: accumulate; bit-identical. Re-enabling is a separate decision (Q7) |
-| **D15** | High, **new** | `extc_coef` points at the host's `extc` (`aed_api.F90:1181`) and so means total SW Kd (GLM), bio-only `bioshade` (TUFLOW-FV; never written by the API because of D4) or band-1 Kd (ELCOM). Consumers: phytoplankton, carbon, methane, organic_matter, habitat_water, totals. Also only provided `IF (BSSOCIATED(extc))` | API-owned PAR Kd (§5.5); behaviour change C4 |
+| **D15** | **High — confirmed** (§3.5) | `extc_coef` points at the host's `extc` (`aed_api.F90:1181`) and so means total SW Kd (GLM), bio-only `bioshade` (TUFLOW-FV; never written by the API because of D4) or band-1 Kd (ELCOM). Consumers: phytoplankton, carbon, methane, organic_matter, habitat_water, totals. Also only provided `IF (BSSOCIATED(extc))` | API-owned PAR Kd (§5.5); behaviour change C4 |
 | **D16** | Low, **new** | global availability is inferred from `BSSOCIATED()` (`aed_api.F90:939-955`, `:1047-1063`), not declared | declarations (§5.11) |
 
-### 3.5 libaed-light defects (review of `src/`)
+### 3.5 A9 evidence: Conjimba `_11` (TUFLOW-FV, 2D)
+
+`ass_model/output/ERA_S4_097_WQ_EX_AED_11*.nc`: 32,935 cells, one layer each
+(`NumCells2D = NumCells3D`), 625 two-hourly outputs.
+
+| Output | Result | Meaning |
+|---|---|---|
+| `WQ_DIAG_TOT_EXTC` (`aed_totals` copy of `extc_coef`) | **0 in every cell at every output** | D15: `extc_coef` is TUFLOW-FV's `extcoeff_`, which nothing fills; D4: the API write-back `extc(1:0)` is empty for 1-layer columns |
+| `WQ_DIAG_TOT_PAR` / `TOT_LIGHT` | nonzero in 310/625 outputs (daytime), max 590 / 1371 W/m², ratio 0.43 | surface light path is fine (`par = par_fraction·I_0`) |
+| `WQ_DIAG_PHY_TCHLA`, `TSS` | nonzero, up to 14 µg/L and 308 mg/L | bio/particle Kd *should* be nonzero, so shading feedback is also lost (D4) |
+
+**Consequence for biology.** Conjimba phytoplankton use `lightModel = 0`
+(`aed_phyto_pars.csv`: `I_K = 150`, `KePHY = 0.0005`). In
+`photosynthesis_irradiance` (`aed_bio_utils.F90:570`) `extc = 0` gives
+`par_b = par_t`, so `z1 = z2` and `fI = 1 + 0/1e-3 = 1`: **phytoplankton are
+never light-limited in daylight**, whatever the depth, turbidity or
+irradiance (apart from the `par_t < 5e-5` cut-off). Other light models see
+surface light throughout the layer, and `lightModel = 7` evaluates `0/0`
+(NaN). Because every top-down TUFLOW-FV column also has an empty write-back
+range, this probably applies to **every TUFLOW-FV + AED API run** unless
+TUFLOW-FV itself fills `extcoeff_` (ask BMT, Q6). Any calibration done on
+TUFLOW-FV through the API has been done with light limitation effectively off
+by day; C4 is therefore a large change for those models.
+
+### 3.6 libaed-light defects (review of `src/`)
 
 | ID | Defect |
 |----|--------|
@@ -575,7 +600,7 @@ Everything not listed here is bit-identical at its checkpoint.
 | **C1** | GLM API `I_0` becomes net SW (D2) | GLM API driver | B4 | `light_compat_surface = .TRUE.` (binds gross, as today) |
 | **C2** | oasim reflection skipped on net input (D10) | oasim on TUFLOW-FV, ELCOM, (SCHISM) | B4 | oasim `assume_incident = .TRUE.` |
 | **C3** | D9 comparison fixed | all, phytoplankton | B4 | none (bug) |
-| **C4** | `extc_coef` = API PAR Kd (D15) | TUFLOW-FV (large), ELCOM (band 1 → total PAR), GLM (SW → PAR; small) | B5 | `light_compat_extc = .TRUE.` (host `extc`, as today) |
+| **C4** | `extc_coef` = API PAR Kd (D15) | TUFLOW-FV (**large**: switches on daytime light limitation, §3.5), ELCOM (band 1 → total PAR), GLM (SW → PAR; small) | B5 | `light_compat_extc = .TRUE.` (host `extc`, as today) |
 | **C5** | Bio-shading feedback reaches top-down and 1-layer columns (D4) | TUFLOW-FV, ELCOM, all 2D | B5 | existing `bioshade_feedback = .FALSE.` |
 | **C6** | ELCOM host mode: biology uses ELCOM's band light (D7) | ELCOM | B5 | `light_mode = 'api'` |
 | **C7** | Band-specific Kd from spectral modules | multi-band hosts | B6 | grey = don't declare spectra (module `spectral = .FALSE.`) |
