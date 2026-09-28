@@ -417,6 +417,17 @@ MODULE aed_api
    !# the particle-driven flux would never reach the state-variable update.
    AED_REAL,DIMENSION(:,:),ALLOCATABLE,SAVE :: flux_pel_ptm
 
+   !# flux_pel_rip / flux_hz_rip hold the riparian (wetting-front) fluxes
+   !# computed once per host step by aed_calculate_riparian in aed_run_model.
+   !# Modules write these via _FLUX_VAR_ / _FLUX_VAR_B_ / _FLUX_VAR_T_ /
+   !# _FLUX_VAR_R_, but calculate_fluxes zeroes all flux arrays on entry, so
+   !# they are captured here and re-added on every split in aed_run_column.
+   !# flux_pel_rip is volumetric (areal bottom/surface terms already divided
+   !# by the bottom/top layer thickness); flux_hz_rip is the areal flux for
+   !# the benthic (sheet) state variables.
+   AED_REAL,DIMENSION(:,:),ALLOCATABLE,SAVE :: flux_pel_rip !# (n_vars, MAX(n_layers, aed_n_zones))
+   AED_REAL,DIMENSION(:),  ALLOCATABLE,SAVE :: flux_hz_rip  !# (n_vars_ben)
+
 #ifdef f2003
    USE, intrinsic :: iso_fortran_env, ONLY : stdin=>input_unit, &
                                              stdout=>output_unit, &
@@ -1413,12 +1424,30 @@ SUBROUTINE aed_run_model(nCols, nLevs, doSurface)
          ENDIF
       ENDDO
 
+      !# Riparian/dry fluxes start from clean arrays (they otherwise still hold
+      !# the previous column's fluxes). GLM-style zones call riparian per zone
+      !# inside calculate_fluxes, so the hold/re-apply is skipped for them.
+      IF ( .NOT. glm_style_zones ) THEN
+         flux_pel = zero_ ; flux_ben = zero_ ; flux_atm = zero_ ; flux_rip = zero_
+      ENDIF
+
       IF (.NOT. xdat%active) THEN
          CALL aed_calculate_dry(xcol, ibot);
          CALL aed_calculate_riparian(xcol, ibot, zero_);
       ELSE
          CALL aed_calculate_riparian(xcol, ibot, one_);
+      ENDIF
 
+      IF ( .NOT. glm_style_zones ) &
+         CALL hold_riparian_fluxes(xdat, col_lev, ibot, itop)
+
+      IF (.NOT. xdat%active) THEN
+         !# Dry cell: aed_run_column is not called, so only the benthic (sheet)
+         !# state can take up the riparian flux; apply it over the host step.
+         IF ( .NOT. glm_style_zones ) &
+            xdat%cc_hz(1:n_vars_ben) = xdat%cc_hz(1:n_vars_ben) + &
+                                       timestep*flux_hz_rip(1:n_vars_ben)
+      ELSE
          IF ( .NOT. reinited ) CALL re_initialize(xcol, xdat, col_lev, ibot, itop)
 
          !----------------------------------------------------------------------
@@ -1536,6 +1565,43 @@ CONTAINS
       !#===========================================================#!
 
    END SUBROUTINE map_column
+   !++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+
+   !############################################################################
+   SUBROUTINE hold_riparian_fluxes(idata, nlev, bot, top)
+   !----------------------------------------------------------------------------
+   ! Capture the fluxes written by aed_calculate_riparian (and _dry) for this
+   ! column into flux_pel_rip/flux_hz_rip, before calculate_fluxes zeroes the
+   ! flux arrays. Water fluxes are only kept for wet (active) columns.
+   !----------------------------------------------------------------------------
+   !ARGUMENTS
+      TYPE(api_col_data_t),INTENT(in) :: idata
+      INTEGER,INTENT(in) :: nlev, bot, top
+   !
+   !----------------------------------------------------------------------------
+   !BEGIN
+      IF ( .NOT. ALLOCATED(flux_pel_rip) ) THEN
+         ALLOCATE(flux_pel_rip(n_vars, SIZE(flux_pel,2)))
+         ALLOCATE(flux_hz_rip(n_vars_ben))
+      ENDIF
+
+      !# Benthic (sheet) state variables: areal flux
+      flux_hz_rip(1:n_vars_ben) = flux_ben(n_vars+1:n_vars+n_vars_ben) + &
+                                  flux_rip(n_vars+1:n_vars+n_vars_ben) + &
+                                  flux_atm(n_vars+1:n_vars+n_vars_ben)
+
+      !# Water state variables: volumetric, with areal bottom/surface terms
+      !# distributed over the bottom/top layer as in calculate_fluxes
+      flux_pel_rip = zero_
+      IF ( idata%active ) THEN
+         flux_pel_rip(1:n_vars, 1:nlev) = flux_pel(1:n_vars, 1:nlev)
+         flux_pel_rip(1:n_vars, bot) = flux_pel_rip(1:n_vars, bot) + &
+                    (flux_ben(1:n_vars) + flux_rip(1:n_vars)) / idata%lheights(bot)
+         flux_pel_rip(1:n_vars, top) = flux_pel_rip(1:n_vars, top) + &
+                    flux_atm(1:n_vars) / idata%dz(top)
+      ENDIF
+   END SUBROUTINE hold_riparian_fluxes
    !++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 
 
@@ -1662,6 +1728,15 @@ CONTAINS
          IF ( do_particle_bgc ) THEN
             IF ( ALLOCATED(flux_pel_ptm) ) &
                flux_pel(1:n_vars,1:nlev) = flux_pel(1:n_vars,1:nlev) + flux_pel_ptm(1:n_vars,1:nlev)
+         ENDIF
+
+         !# Likewise re-apply the riparian fluxes held in aed_run_model
+         !# (hold_riparian_fluxes). The benthic part is only applied on the
+         !# non-zone path; with zones the sheet state comes from flux_zon.
+         IF ( .NOT. glm_style_zones .AND. ALLOCATED(flux_pel_rip) ) THEN
+            flux_pel(1:n_vars,1:nlev) = flux_pel(1:n_vars,1:nlev) + flux_pel_rip(1:n_vars,1:nlev)
+            flux_ben(n_vars+1:n_vars+n_vars_ben) = flux_ben(n_vars+1:n_vars+n_vars_ben) + &
+                                                   flux_hz_rip(1:n_vars_ben)
          ENDIF
 
          !# Update the water column layers
