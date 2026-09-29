@@ -34,19 +34,20 @@ This plan:
 Out of scope: host hydrodynamic heating schemes themselves (only what AED
 returns to them), and calibration changes to module coefficients.
 
-## 2. Status at 2026-09-27
+## 2. Status at 2026-09-30
 
 | Item | State |
 |---|---|
 | Run `_12` segfault (D1) | **Fixed.** Uncommitted Sep-24 edit (`Light` used `idata%rad(top)`, null in TUFLOW-FV) reverted; `Light` uses `I_0` |
 | A1 — libaed-api Stage 0 comment + `LIGHT_PLAN.md` | Committed (`83c7b81`) |
-| A2 — retire libaed-light `aed_light.F90` | Edited, uncommitted, awaiting VM build |
+| A2 — retire libaed-light `aed_light.F90` | Committed; GLM (both drivers) identical in Docker |
 | A3 — `fv_aed` `rad_` → `irr_host_` | Edited, uncommitted, awaiting VM build |
-| A4 — `output=` flag on diagnostics | Edited, uncommitted, awaiting VM build (both `aed_define_diag_variable` and `aed_define_sheet_diag_variable`) |
-| A5 — D14 accumulate (macrophyte, vegetation) | Edited, uncommitted, awaiting VM build |
-| A7 — drop `slingo_const.h` from vfproj | Edited, uncommitted (same file as A2; committed after A2) |
+| A4 — `output=` flag on diagnostics | Committed; GLM identical |
+| A5 — D14 accumulate (macrophyte, vegetation) | Committed; GLM identical, also with the Q7 binding enabled |
+| A7 — drop `slingo_const.h` from vfproj | Committed with A2 |
 | A8 — this plan | Committed |
 | A9 — D4/D15 check | **TUFLOW-FV confirmed** on Conjimba `_11` (§3.5). ELCOM and the baselines still to do |
+| B1 — light tidy | Committed on `standardize_light` (libaed-water, libaed-light). GLM suite (7 cases: CGM, macrophyte ×2 drivers, Rotorua oasim `sky_model` 1 and 2 ×2 drivers) bit-identical to baseline. Needs libaed-water linked again after the plus libs (static link order): fixed in GLM, zeroD, ELCOM, libaed-fv Makefiles; schism-aed CMake still to do |
 | Everything else | Not started |
 
 Unrelated local changes to keep out of light commits:
@@ -609,6 +610,8 @@ Everything not listed here is bit-identical at its checkpoint.
 | **C10** | A6 `par_frac` honoured | ELCOM with nml ≠ 0.45 | A6 | set `par_frac = 0.45` |
 | **C11** | Host band Kd from oasim (total, replaces host Kd) | hosts selecting `feedback_source='oasim'` (ELCOM first) | B7 | `feedback_source = 'modules'` |
 | **C12** | `extc_coef` and biology light from oasim (`'module'` mode, Q9) | configs selecting it | B7 | `light_mode` back to `'api'`/`'host'` |
+| **C13** | oasim `sky_model=1` with `compute_mean_wind=.false.`: mean wind read from host `mean_wind` (was uninitialised) | configs using it | B1 | none (bug) |
+| **C14** | oasim dry cells: `zen` diagnostic uses `tzshift` (was hard-coded 8 h); dead sky block after `RETURN` removed | oasim on wetting/drying hosts, `tzshift` ≠ 8 | B1 | none (bug) |
 
 Continuity switches are removed no earlier than one release after
 `light-std-1.0`.
