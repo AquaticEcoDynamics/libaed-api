@@ -849,6 +849,9 @@ SUBROUTINE aed_set_model_env(env, ncols, nlevs)
    timestep => env(1)%timestep
    yearday  => env(1)%yearday
 
+   !# Make the host timestep available to modules via aed_get_timestep()
+   CALL aed_set_timestep(timestep, split_factor)
+
    DO col=1,ncols
       data(col)%n_layers     =  env(col)%n_layers
       data(col)%bot_idx      => env(col)%bot_idx
@@ -1389,6 +1392,7 @@ SUBROUTINE aed_run_model(nCols, nLevs, doSurface)
    !----------------------------------------------------------------------------
    !# reset effective time/step
    dt_eff = timestep/FLOAT(split_factor)
+   CALL aed_set_timestep(timestep, split_factor)   !# host may vary dt
 
    IF (do_particle_bgc) CALL Particles(nLevs)
 
