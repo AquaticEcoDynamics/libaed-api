@@ -40,7 +40,10 @@ MODULE aed_api
    USE aed_util
    USE aed_common
    USE aed_zones
-   USE aed_ptm, ONLY : Particles, aed_calculate_particles, aed_split_particles, set_ptm_aed_var_num
+   USE aed_core, ONLY : aed_substep_frac
+   !# S5 2026-09-15: the unguarded bodies - a model step must not trip its own overlap guard
+   USE aed_ptm, ONLY : Particles_impl, aed_calculate_particles_impl, aed_split_particles_impl, &
+                       set_ptm_aed_var_num_impl
 
    IMPLICIT NONE
 
@@ -57,7 +60,20 @@ MODULE aed_api
           aed_set_mobility_fn,    aed_mobility_fn_t,     &
           aed_run_model,                                 &
           aed_clean_model,                               &
-          aed_var_index
+          aed_var_index,                                 &
+          aed_ptm_flux_fn
+
+   !# S5 2026-09-15: detection-only overlap guard for the public entry points (libaed-api/src/aed_api_guard.c)
+   INTERFACE
+      SUBROUTINE aed_api_guard_enter(id) BIND(C, name="aed_api_guard_enter")
+         USE ISO_C_BINDING, ONLY : C_INT
+         INTEGER(C_INT), VALUE :: id
+      END SUBROUTINE aed_api_guard_enter
+      SUBROUTINE aed_api_guard_leave(id) BIND(C, name="aed_api_guard_leave")
+         USE ISO_C_BINDING, ONLY : C_INT
+         INTEGER(C_INT), VALUE :: id
+      END SUBROUTINE aed_api_guard_leave
+   END INTERFACE
 
 
    !#===========================================================#!
@@ -120,6 +136,14 @@ MODULE aed_api
       !# time and location
       AED_REAL,POINTER              :: timestep       => null()
       AED_REAL,POINTER              :: yearday        => null()
+      !# D-4: Julian day number, DISTINCT from yearday. yearday is day-of-year (1-366);
+      !# julianday is the continuous Julian day (e.g. 2460867). aed_organic_matter's
+      !# EpiN source compares against absolute Julian day bounds, so substituting
+      !# day-of-year would silently shift the forcing window by thousands of days.
+      !# The legacy adapter provides both (glm_aed.F90:309-310); the API provided neither
+      !# but yearday, so any api-path config with simEpiNSource hit the CASE DEFAULT
+      !# 'external variable not found' branch.
+      AED_REAL,POINTER              :: julianday      => null()
       AED_REAL,POINTER              :: longitude      => null()
       AED_REAL,POINTER              :: latitude       => null()
       INTEGER, POINTER              :: col_num        => null()
@@ -361,6 +385,7 @@ MODULE aed_api
 
    !# To support light
    AED_REAL,POINTER :: yearday => null()
+   AED_REAL,POINTER :: julianday => null()
    AED_REAL,POINTER :: timestep => null()
 
    AED_REAL,DIMENSION(:),  POINTER :: bathy      => null()
@@ -408,6 +433,58 @@ MODULE aed_api
    AED_REAL,ALLOCATABLE,TARGET :: flux_pel(:,:)        !# (n_vars, MAX(n_layers, aed_n_zones))
    AED_REAL,DIMENSION(:,:),ALLOCATABLE :: flux_pel_pre !# (n_vars+n_vars_ben, MAX(n_layers, aed_n_zones))
    AED_REAL,DIMENSION(:,:),ALLOCATABLE :: flux_pel_z   !# (n_vars+n_vars_ben, MAX(n_layers, aed_n_zones))
+   !# 2026-09-09: particle-only flux snapshot, held as a RATE. See aed_run_model.
+   !#
+   !# OWNERSHIP: module-level, but written and consumed within ONE iteration of the
+   !# `DO col=1, nCols` loop in aed_run_model - zeroed immediately before that column's
+   !# aed_calculate_particles call and consumed by that same column's aed_run_column,
+   !# with nothing in between. That makes per-column isolation exact for the current
+   !# SERIAL column loop. If that loop is ever parallelised this must become per-column
+   !# storage (or OMP threadprivate); a shared buffer would leak one column's particle
+   !# flux into another.
+
+   !# 2026-09-09 TEST SEAM, for verifying fix 16 (particle flux snapshot + per-split re-addition).
+   !#
+   !# Substitutes ONLY the particle-flux PRODUCER (called per sub-step in aed_run_column); the
+   !# re-addition inside aed_run_column are the code UNDER TEST and are deliberately not forked -
+   !# the same discipline applied to meso_film_fn in the wall solver, where only the film evaluator
+   !# was replaceable and the solver stayed bit-identical to production.
+   !#
+   !# Why a seam is needed at all: the claim is that the integrated contribution equals
+   !# rate x host_dt regardless of split_factor. Measuring that through a real particle model is
+   !# hopeless - the feedback contributes ~4e-08 of the state, six orders below the discretization
+   !# differences that sub-stepping itself produces. A known injected rate makes the contribution
+   !# observable in the updated state.
+   !#
+   !# NULL by default, which selects aed_calculate_particles, so a production build is unchanged.
+   ABSTRACT INTERFACE
+      SUBROUTINE aed_ptm_flux_i(icolm, nlev, idx_lo, idx_hi, col_no, dt_days)
+         IMPORT :: aed_column_t
+         TYPE(aed_column_t),INTENT(inout) :: icolm(:)
+         INTEGER,INTENT(in)               :: nlev, idx_lo, idx_hi, col_no
+         AED_REAL,INTENT(in),OPTIONAL     :: dt_days
+      END SUBROUTINE aed_ptm_flux_i
+   END INTERFACE
+   PROCEDURE(aed_ptm_flux_i), POINTER :: aed_ptm_flux_fn => NULL()
+
+   !# Built-in constant-rate producer, selected by setting GLM_PTM_TESTRATE to a number.
+   !# Unset - the normal case - leaves aed_ptm_flux_fn NULL and the production path untouched.
+   !#
+   !# This exists because the claim under test (integrated contribution = rate x host_dt,
+   !# independent of split_factor) is unobservable through a real particle model: the feedback
+   !# moves the state by ~4e-08 while sub-stepping a nonlinear biology changes it by ~4e-02.
+   !# Injecting a LARGE known rate makes the contribution dominant, and the check is then made
+   !# against the UPDATED STATE - not by re-summing the snapshot into another counter, which
+   !# would be tautological and could not detect a dropped or duplicated re-addition.
+#ifdef AED_PTM_TESTHOOK
+   !# COMPILED OUT of release builds. Reading a rate from the environment is a hazard in a
+   !# production binary: an inherited GLM_PTM_TESTRATE would silently replace particle physics
+   !# in an ordinary run, with only a log line to say so. Build the verification binary with
+   !# -DAED_PTM_TESTHOOK; the shipped one has no such path at all.
+   AED_REAL :: ptm_test_rate = 0.
+   LOGICAL  :: ptm_test_on = .FALSE., ptm_test_checked = .FALSE.
+   INTEGER  :: ptm_test_var = -1   !# index of the first PELAGIC STATE variable
+#endif
 
 #ifdef f2003
    USE, intrinsic :: iso_fortran_env, ONLY : stdin=>input_unit, &
@@ -506,7 +583,7 @@ END SUBROUTINE aed_show_vars
 
 
 !###############################################################################
-INTEGER FUNCTION aed_configure_models(fname, NumWQ_Vars, NumWQ_Ben,            &
+INTEGER FUNCTION aed_configure_models_impl(fname, NumWQ_Vars, NumWQ_Ben,            &
                                     NumWQ_Diag, NumWQ_DiagS, NumPTM_Vars, quiet)
 !-------------------------------------------------------------------------------
 ! Initializes the AED-API driver by reading settings from "fname"
@@ -568,7 +645,7 @@ INTEGER FUNCTION aed_configure_models(fname, NumWQ_Vars, NumWQ_Ben,            &
 
    models = ''
    READ(namlst, nml=aed_models, iostat=status)
-   IF ( status /= 0 ) STOP "Cannot read namelist entry aed_models"
+   IF ( status /= 0 ) ERROR STOP "Cannot read namelist entry aed_models"
 
    DO i=1,size(models)
       IF ( models(i) == '' ) EXIT
@@ -602,9 +679,9 @@ INTEGER FUNCTION aed_configure_models(fname, NumWQ_Vars, NumWQ_Ben,            &
 
    !# names = grab the names from info
    ALLOCATE(names(n_vars),stat=status)
-   IF (status /= 0) STOP 'allocate_memory(): Error allocating (names)'
+   IF (status /= 0) ERROR STOP 'allocate_memory(): Error allocating (names)'
    ALLOCATE(bennames(n_vars_ben),stat=status)
-   IF (status /= 0) STOP 'allocate_memory(): Error allocating (bennames)'
+   IF (status /= 0) ERROR STOP 'allocate_memory(): Error allocating (bennames)'
 
    NumWQ_Vars  = n_vars
    NumWQ_Ben   = n_vars_ben
@@ -614,13 +691,28 @@ INTEGER FUNCTION aed_configure_models(fname, NumWQ_Vars, NumWQ_Ben,            &
 
    IF ( loud ) print*,'     ----------  AED API config : end  ----------'
 
-   aed_configure_models = n_aed_vars
+   aed_configure_models_impl = n_aed_vars
+END FUNCTION aed_configure_models_impl
+
+!###############################################################################
+INTEGER FUNCTION aed_configure_models(fname, NumWQ_Vars, NumWQ_Ben, &
+                           NumWQ_Diag, NumWQ_DiagS, NumPTM_Vars, quiet)   !# S5 wrapper
+!# S5 2026-09-15: guarded entry point 3 (aed_api_guard.c); the body is aed_configure_models_impl, unchanged
+   CHARACTER(*),INTENT(in) :: fname
+   INTEGER,INTENT(out) :: NumWQ_Vars, NumWQ_Ben
+   INTEGER,INTENT(out) :: NumWQ_Diag, NumWQ_DiagS
+   INTEGER,OPTIONAL,INTENT(out) :: NumPTM_Vars
+   LOGICAL,OPTIONAL,INTENT(in) :: quiet
+   CALL aed_api_guard_enter(3)
+   aed_configure_models = aed_configure_models_impl(fname, NumWQ_Vars, NumWQ_Ben, &
+                           NumWQ_Diag, NumWQ_DiagS, NumPTM_Vars, quiet)
+   CALL aed_api_guard_leave(3)
 END FUNCTION aed_configure_models
 !+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 
 
 !###############################################################################
-SUBROUTINE aed_set_mobility_fn(mobl)
+SUBROUTINE aed_set_mobility_fn_impl(mobl)
 !-------------------------------------------------------------------------------
 ! The pre-kinetics stage of an AED timestep run will attempt to run
 ! settling/rising code if mobility_off is false;
@@ -634,12 +726,21 @@ SUBROUTINE aed_set_mobility_fn(mobl)
 !-------------------------------------------------------------------------------
 !BEGIN
     doMobility => mobl
+END SUBROUTINE aed_set_mobility_fn_impl
+
+!###############################################################################
+SUBROUTINE aed_set_mobility_fn(mobl)   !# S5 wrapper
+!# S5 2026-09-15: guarded entry point 6 (aed_api_guard.c); the body is aed_set_mobility_fn_impl, unchanged
+   PROCEDURE(aed_mobility_fn_t),POINTER :: mobl
+   CALL aed_api_guard_enter(6)
+   CALL aed_set_mobility_fn_impl(mobl)
+   CALL aed_api_guard_leave(6)
 END SUBROUTINE aed_set_mobility_fn
 !+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 
 
 !###############################################################################
-SUBROUTINE aed_set_coupling(cpl)
+SUBROUTINE aed_set_coupling_impl(cpl)
 !-------------------------------------------------------------------------------
 ! Routine to set the coupling information provided by the host
 !-------------------------------------------------------------------------------
@@ -675,12 +776,21 @@ SUBROUTINE aed_set_coupling(cpl)
    nir_fraction = cpl%nir_fraction
    uva_fraction = cpl%uva_fraction
    uvb_fraction = cpl%uvb_fraction
+END SUBROUTINE aed_set_coupling_impl
+
+!###############################################################################
+SUBROUTINE aed_set_coupling(cpl)   !# S5 wrapper
+!# S5 2026-09-15: guarded entry point 1 (aed_api_guard.c); the body is aed_set_coupling_impl, unchanged
+   TYPE(aed_coupling_t), INTENT(in) :: cpl
+   CALL aed_api_guard_enter(1)
+   CALL aed_set_coupling_impl(cpl)
+   CALL aed_api_guard_leave(1)
 END SUBROUTINE aed_set_coupling
 !+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 
 
 !###############################################################################
-SUBROUTINE aed_set_model_data(dat, ncols, nlevs)
+SUBROUTINE aed_set_model_data_impl(dat, ncols, nlevs)
 !-------------------------------------------------------------------------------
 ! Routine to set and then initialise AED (state) variables
 !-------------------------------------------------------------------------------
@@ -698,17 +808,17 @@ SUBROUTINE aed_set_model_data(dat, ncols, nlevs)
 
    IF ( .NOT. ALLOCATED(all_cols) ) THEN
       ALLOCATE(all_cols(n_aed_vars, ncols),stat=status)
-      IF (status /= 0) STOP 'allocate_memory(): Error allocating "all_cols"'
+      IF (status /= 0) ERROR STOP 'allocate_memory(): Error allocating "all_cols"'
    ENDIF
    IF ( aed_n_zones > 0 ) THEN
       IF ( .NOT. ALLOCATED(zon_cols) ) THEN
          ALLOCATE(zon_cols(n_aed_vars, aed_n_zones),stat=status)
-         IF (status /= 0) STOP 'allocate_memory(): Error allocating "zon_cols"'
+         IF (status /= 0) ERROR STOP 'allocate_memory(): Error allocating "zon_cols"'
       ENDIF
 
       IF ( .NOT. ALLOCATED(flux_zon) )  THEN
          ALLOCATE(flux_zon(n_vars+n_vars_ben, aed_n_zones),stat=status)
-         IF (status /= 0) STOP 'allocate_memory(): Error allocating "flux_zon"'
+         IF (status /= 0) ERROR STOP 'allocate_memory(): Error allocating "flux_zon"'
       ENDIF
    ENDIF
    IF (.NOT.ALLOCATED(flux_ben))     ALLOCATE(flux_ben(n_vars+n_vars_ben))
@@ -736,7 +846,7 @@ SUBROUTINE aed_set_model_data(dat, ncols, nlevs)
    !# Now set initial values
    v = 0 ; sv = 0; pv = 0;
    DO av=1,n_aed_vars
-      IF ( .NOT.  aed_get_var(av, tvar) ) STOP "     ERROR getting variable info"
+      IF ( .NOT.  aed_get_var(av, tvar) ) ERROR STOP "     ERROR getting variable info"
       IF ( tvar%var_type == V_STATE ) THEN  !# state variable
          IF ( tvar%sheet ) THEN
             sv = sv + 1
@@ -751,13 +861,13 @@ SUBROUTINE aed_set_model_data(dat, ncols, nlevs)
          ENDIF
       ENDIF
    ENDDO
-   CALL set_ptm_aed_var_num(n_aed_vars)
+   CALL set_ptm_aed_var_num_impl(n_aed_vars)
 
    !# Allocate array with vertical movement rates (m/s, positive for upwards),
    !# and set these to the values provided by the model.
    !# allocated for all vars even though only state vars entries will be used
    ALLOCATE(ws(n_aed_vars, MaxLayers),stat=status)
-   IF (status /= 0) STOP 'allocate_memory(): Error allocating (ws)'
+   IF (status /= 0) ERROR STOP 'allocate_memory(): Error allocating (ws)'
    ws = zero_
 
 !  !# Trigger an error if we don't have all we need.
@@ -771,12 +881,22 @@ SUBROUTINE aed_set_model_data(dat, ncols, nlevs)
          CALL define_zone_column(zon_cols(:,zon), zon)
       ENDDO
    ENDIF
+END SUBROUTINE aed_set_model_data_impl
+
+!###############################################################################
+SUBROUTINE aed_set_model_data(dat, ncols, nlevs)   !# S5 wrapper
+!# S5 2026-09-15: guarded entry point 4 (aed_api_guard.c); the body is aed_set_model_data_impl, unchanged
+   INTEGER,INTENT(in) :: ncols, nlevs
+   TYPE(aed_data_t),INTENT(in) :: dat(ncols)
+   CALL aed_api_guard_enter(4)
+   CALL aed_set_model_data_impl(dat, ncols, nlevs)
+   CALL aed_api_guard_leave(4)
 END SUBROUTINE aed_set_model_data
 !+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 
 
 !###############################################################################
-SUBROUTINE aed_set_model_env(env, ncols, nlevs)
+SUBROUTINE aed_set_model_env_impl(env, ncols, nlevs)
 !-------------------------------------------------------------------------------
 ! Routine to set environment (external) variables to main column "data" array
 !-------------------------------------------------------------------------------
@@ -800,7 +920,7 @@ SUBROUTINE aed_set_model_env(env, ncols, nlevs)
    !# Allocate main AED column arrays
    IF (.NOT. ALLOCATED(data) ) THEN
       ALLOCATE(data(ncols),stat=status)
-      IF (status /= 0) STOP 'allocate_memory(): Error allocating "data"'
+      IF (status /= 0) ERROR STOP 'allocate_memory(): Error allocating "data"'
    ENDIF
 
    !# Check whether external light field is to be used, or allocate locally
@@ -829,6 +949,7 @@ SUBROUTINE aed_set_model_env(env, ncols, nlevs)
    !# Set local AED column data structure to point to environment vars from host
    timestep => env(1)%timestep
    yearday  => env(1)%yearday
+   julianday => env(1)%julianday
 
    DO col=1,ncols
       data(col)%n_layers     =  env(col)%n_layers
@@ -915,6 +1036,7 @@ SUBROUTINE aed_set_model_env(env, ncols, nlevs)
    !# Register module accesible environment variables to AED core variable list
    IF (ASSOCIATED(timestep))       tv=aed_provide_sheet_global('timestep',      'timestep',              'seconds' )
    IF (ASSOCIATED(yearday))        tv=aed_provide_sheet_global('yearday',       'yearday',               'day'     )
+   IF (ASSOCIATED(julianday))      tv=aed_provide_sheet_global('julianday',     'julian day',            'day'     )
 
    IF (BSSOCIATED(longitude))      tv=aed_provide_sheet_global('longitude',     'longitude',             'radians' )
    IF (BSSOCIATED(latitude))       tv=aed_provide_sheet_global('latitude',      'latitude',              'radians' )
@@ -995,12 +1117,22 @@ SUBROUTINE aed_set_model_env(env, ncols, nlevs)
     !bathy
     !datum
 
+END SUBROUTINE aed_set_model_env_impl
+
+!###############################################################################
+SUBROUTINE aed_set_model_env(env, ncols, nlevs)   !# S5 wrapper
+!# S5 2026-09-15: guarded entry point 2 (aed_api_guard.c); the body is aed_set_model_env_impl, unchanged
+   INTEGER,INTENT(in) :: ncols, nlevs
+   TYPE(aed_env_t),INTENT(in) :: env(ncols)
+   CALL aed_api_guard_enter(2)
+   CALL aed_set_model_env_impl(env, ncols, nlevs)
+   CALL aed_api_guard_leave(2)
 END SUBROUTINE aed_set_model_env
 !+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 
 
 !###############################################################################
-SUBROUTINE aed_check_model_setup
+SUBROUTINE aed_check_model_setup_impl
 !-------------------------------------------------------------------------------
 ! Check that all variable dependencies have been met
 !-------------------------------------------------------------------------------
@@ -1016,13 +1148,14 @@ SUBROUTINE aed_check_model_setup
    err_count = 0
 
    DO av=1,n_aed_vars
-      IF ( .NOT. aed_get_var(av, tvar) ) STOP "Error getting variable info"
+      IF ( .NOT. aed_get_var(av, tvar) ) ERROR STOP "Error getting variable info"
 
       IF ( tvar%var_type == V_EXTERNAL ) THEN !# Environment (external/global) variable
          ev = ev + 1
          SELECT CASE (tvar%name)
             CASE ( 'timestep' )    ; tvar%found = ASSOCIATED(timestep)
             CASE ( 'yearday' )     ; tvar%found = ASSOCIATED(yearday)
+            CASE ( 'julianday' )   ; tvar%found = ASSOCIATED(julianday)
 
             CASE ( 'longitude' )   ; tvar%found = BSSOCIATED(longitude)
             CASE ( 'latitude' )    ; tvar%found = BSSOCIATED(latitude)
@@ -1112,6 +1245,14 @@ SUBROUTINE aed_check_model_setup
    IF ( n_vars_diag_sheet < sd ) print *,"More sheet diag vars than expected"
 
    IF ( err_count > 0 ) CALL STOPIT("*** ERRORS IN CONFIGURATION")
+END SUBROUTINE aed_check_model_setup_impl
+
+!###############################################################################
+SUBROUTINE aed_check_model_setup   !# S5 wrapper
+!# S5 2026-09-15: guarded entry point 5 (aed_api_guard.c); the body is aed_check_model_setup_impl, unchanged
+   CALL aed_api_guard_enter(5)
+   CALL aed_check_model_setup_impl
+   CALL aed_api_guard_leave(5)
 END SUBROUTINE aed_check_model_setup
 !+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 
@@ -1134,13 +1275,14 @@ SUBROUTINE define_column(icolm, col)
 !BEGIN
    v = 0 ; d = 0; sv = 0; sd = 0 ; ev = 0
    DO av=1,n_aed_vars
-      IF ( .NOT. aed_get_var(av, tvar) ) STOP "Error getting variable info"
+      IF ( .NOT. aed_get_var(av, tvar) ) ERROR STOP "Error getting variable info"
 
       IF ( tvar%var_type == V_EXTERNAL ) THEN !# global variable
          ev = ev + 1
          SELECT CASE (tvar%name)
             CASE ( 'timestep' )    ; icolm(av)%cell_sheet => timestep
             CASE ( 'yearday' )     ; icolm(av)%cell_sheet => yearday
+            CASE ( 'julianday' )   ; icolm(av)%cell_sheet => julianday
 
             CASE ( 'longitude' )   ; icolm(av)%cell_sheet => data(col)%longitude
             CASE ( 'latitude' )    ; icolm(av)%cell_sheet => data(col)%latitude
@@ -1252,13 +1394,14 @@ SUBROUTINE define_zone_column(zcolm, zon)
 !BEGIN
    v = 0 ; d = 0; sv = 0; sd = 0 ; ev = 0
    DO av=1,n_aed_vars
-      IF ( .NOT.  aed_get_var(av, tvar) ) STOP "Error getting variable info"
+      IF ( .NOT.  aed_get_var(av, tvar) ) ERROR STOP "Error getting variable info"
 
       IF ( tvar%var_type == V_EXTERNAL ) THEN !# global variable
          ev = ev + 1
          SELECT CASE (tvar%name)
             CASE ( 'timestep' )    ; zcolm(av)%cell_sheet => timestep
             CASE ( 'yearday' )     ; zcolm(av)%cell_sheet => yearday
+            CASE ( 'julianday' )   ; zcolm(av)%cell_sheet => julianday
 
             CASE ( 'longitude' )   ; zcolm(av)%cell_sheet => aedZones(zon)%longitude
             CASE ( 'latitude' )    ; zcolm(av)%cell_sheet => aedZones(zon)%latitude
@@ -1349,10 +1492,80 @@ END SUBROUTINE define_zone_column
 !+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 
 
+#ifdef AED_PTM_TESTHOOK
 !###############################################################################
-SUBROUTINE aed_run_model(nCols, nLevs, doSurface)
+SUBROUTINE ptm_test_init()
+!-------------------------------------------------------------------------------
+! Read GLM_PTM_TESTRATE once. Unset means the production path is used unchanged.
+!-------------------------------------------------------------------------------
+!LOCALS
+   CHARACTER(len=64) :: sval
+   INTEGER :: ios
+   TYPE(aed_variable_t),POINTER :: tvx
+!BEGIN
+   ptm_test_checked = .TRUE.
+   CALL GET_ENVIRONMENT_VARIABLE('GLM_PTM_TESTRATE', sval)
+   IF (LEN_TRIM(sval) == 0) RETURN
+   READ(sval,*,IOSTAT=ios) ptm_test_rate
+   IF (ios /= 0) THEN
+      print *,'    aed_api: GLM_PTM_TESTRATE is not a number: ',TRIM(sval)
+      RETURN
+   ENDIF
+   !# Resolve the first pelagic state variable. An ASSOCIATED guard alone is not enough:
+   !# it would silently inject NOTHING, which is indistinguishable from the very defect
+   !# this test exists to detect. So the index is resolved explicitly and its absence is
+   !# reported rather than skipped.
+   ptm_test_var = -1
+   DO ios = 1, n_aed_vars
+      IF ( aed_get_var(ios, tvx) ) THEN
+         IF ( tvx%var_type == V_STATE .AND. .NOT. tvx%sheet ) THEN
+            ptm_test_var = ios ; EXIT
+         ENDIF
+      ENDIF
+   ENDDO
+   IF (ptm_test_var < 1) THEN
+      print *,'    aed_api: GLM_PTM_TESTRATE set but no pelagic state variable found'
+      RETURN
+   ENDIF
+   ptm_test_on = .TRUE.
+   print *,'    aed_api: PARTICLE FLUX TEST MODE - injecting constant rate ',ptm_test_rate
+   print *,'             into state variable index ',ptm_test_var
+   print *,'             (the real particle model is NOT called; for verification only)'
+END SUBROUTINE ptm_test_init
+!+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+#endif
+
+
+!###############################################################################
+SUBROUTINE aed_run_model_impl(nCols, nLevs, doSurface)
 !-------------------------------------------------------------------------------
 !            nLevs is the number of levels used; -1 means varies between columns
+!-------------------------------------------------------------------------------
+! COLUMN AND THREADING CONTRACT (H, 2026-09-11; see libaed-api/README.md and
+! _v/register/H_api_two_column_20260911.md for the fixture that established it)
+!
+!  * Columns are processed SERIALLY, in slot order col = 1..nCols, by the calling
+!    thread. The module-level work arrays flux_pel, flux_atm, flux_ben,
+!    flux_zon, lpar/lnir/luva/luvb and aed_substep_frac are valid only within one
+!    column iteration; the libaed-water module 'data' objects and aed_ptm stores are
+!    process-global. Calling aed_run_model from more than one thread, or wrapping the
+!    column loop in a host OpenMP parallel region, is UNSUPPORTED: the orphaned
+!    '!$OMP DO' directives further down (benthic/zone loops) have no PARALLEL region
+!    in this file and would become data races inside one supplied by a host.
+!  * Either orientation is supported per column: bot_idx <= top_idx or bot_idx > top_idx;
+!    the section idx_lo:idx_hi is mapped and the helpers traverse it with a per-call
+!    direction that is reset on every call (it was an implicitly SAVEd local before H).
+!  * Required host associations before aed_set_coupling: rain_factor, sw_factor,
+!    friction and Kw (Light adds Kw unconditionally - a null Kw is a segfault, not a
+!    default). Every env array the host supplies must have its own storage of extent
+!    >= n_layers; the API sections them, it does not copy them.
+!  * The producer of the particle flux is replaceable through aed_ptm_flux_fn; the
+!    per-sub-step call site in aed_run_column is not.
+!  * Verified by cases_heat_wall/tools/test_api_ptm_flux.F90 (two columns): different
+!    rates per column and layer for split factors 1,2,4,8; linear accumulation; an
+!    inactive column receives nothing (state and diagnostics); swapped slot order gives
+!    the same per-column result; traversal direction does not persist across columns or
+!    steps; mixed orientation in one call. NOT verified: any concurrent use.
 !-------------------------------------------------------------------------------
 !ARGUMENTS
    INTEGER,INTENT(in) :: nCols, nLevs
@@ -1360,19 +1573,22 @@ SUBROUTINE aed_run_model(nCols, nLevs, doSurface)
 !
 !LOCALS
    INTEGER :: col, itop, ibot, idir, idx_hi, idx_lo, col_lev
-   INTEGER :: d, sd, i
+   INTEGER :: ptm_tl
+   INTEGER :: d, sd, i, lev
+   INTEGER,ALLOCATABLE :: pre_layer_map(:)
    LOGICAL :: first = .TRUE.
    TYPE(aed_variable_t),POINTER :: tv
-   TYPE(aed_column_t)   :: xcol(n_aed_vars)
+   TYPE(aed_column_t),ALLOCATABLE :: xcol(:)
    TYPE(api_col_data_t) :: xdat
 !
 !-------------------------------------------------------------------------------
 !BEGIN
+   ALLOCATE(xcol(n_aed_vars))
    !----------------------------------------------------------------------------
    !# reset effective time/step
    dt_eff = timestep/FLOAT(split_factor)
 
-   IF (do_particle_bgc) CALL Particles(nLevs)
+   IF (do_particle_bgc) CALL Particles_impl(nLevs)
 
    !----------------------------------------------------------------------------
    !# Resetting and re-initialisation tasks
@@ -1388,7 +1604,6 @@ SUBROUTINE aed_run_model(nCols, nLevs, doSurface)
          col_lev = idx_hi - idx_lo + 1
          ibot = 1 ; itop = col_lev
       ENDIF
-
       CALL map_column(col, idx_lo, idx_hi, xcol, xdat)
 
       d = 0; sd = 0
@@ -1422,6 +1637,23 @@ SUBROUTINE aed_run_model(nCols, nLevs, doSurface)
          !# loop in aed_run_column, once per sub-step, so that each sub-step
          !# sees the nutrient concentrations left by the previous one instead of
          !# every particle drawing against the same start-of-step values.
+         IF (do_particle_bgc) THEN
+            !# Compute the OASIM column diagnostics once before the first particle call of
+            !# this step: ABM spectral growth reads the current spectrum; later sub-steps see
+            !# the column solve's own update.
+            ALLOCATE(pre_layer_map(col_lev))
+            IF ( glm_style_zones ) THEN
+               DO lev=1,col_lev
+                  pre_layer_map(lev) = 1 + col_lev - lev
+               ENDDO
+            ELSE
+               DO lev=1,col_lev
+                  pre_layer_map(lev) = lev
+               ENDDO
+            ENDIF
+            CALL aed_calculate_column_model('aed_oasim', xcol, pre_layer_map)
+            DEALLOCATE(pre_layer_map)
+         ENDIF
 
          !----------------------------------------------------------------------
          !# Main time-step tasks
@@ -1432,9 +1664,12 @@ SUBROUTINE aed_run_model(nCols, nLevs, doSurface)
 
    !# Particle splitting (ABM) is host-column independent: run it exactly once,
    !# after every column has been processed, not per-column.
-   IF (do_particle_bgc) CALL aed_split_particles()
+   IF (do_particle_bgc) THEN
+      CALL aed_split_particles_impl()
+   ENDIF
 
    reinited = .TRUE.
+   IF (ALLOCATED(xcol)) DEALLOCATE(xcol)
 
 !-------------------------------------------------------------------------------
 CONTAINS
@@ -1553,7 +1788,7 @@ CONTAINS
    !LOCALS
       TYPE(aed_variable_t),POINTER :: tv
       AED_REAL :: min_C
-      INTEGER  :: i, lev, v, dir = 1
+      INTEGER  :: i, lev, v, dir
 
       AED_REAL :: ws(n_aed_vars, nlev)
    !
@@ -1578,6 +1813,10 @@ CONTAINS
             ENDIF
          ENDDO
 
+         !# H (2026-09-11): 'dir' used to be initialised in its declaration, which makes it an
+         !# implicitly SAVEd local: one bot > top column set it to -1 for the rest of the process
+         !# and every later normal column traversed its layers zero times. Reset it every call.
+         dir = 1
          IF (bot > top) dir = -1
          ! update ws for modules that use the mobility method
          DO lev = bot, top, dir
@@ -1639,6 +1878,11 @@ CONTAINS
          CALL p_calc_zone_areas(aedZones, aed_n_zones, idata%area, idata%lheights, nlev)
 
       DO split=1,split_factor
+         !# 2026-09-10: this sub-step's fraction of the host step, for per-step MEAN
+         !# diagnostics (NCS_swi_dz). Set here, in aed_run_column, next to the reset that
+         !# follows the loop - a first version set it once per step in aed_run_model, which
+         !# left every column after the first at the reset value of 1.0.
+         aed_substep_frac = dt_eff / timestep
          IF (benthic_mode > 1 .and. ASSOCIATED(p_copy_to_zone)) &
             CALL p_copy_to_zone(aedZones, aed_n_zones, idata%lheights, idata%cc,  &
                                  idata%cc_hz, idata%cc_diag, idata%cc_diag_hz, nlev)
@@ -1658,9 +1902,16 @@ CONTAINS
          !# Time-integrate one biological time step
          CALL calculate_fluxes(icolm, idata, nlev, bot, top, doSurface)
 
-         IF ( do_particle_bgc ) &
-            CALL aed_calculate_particles(icolm, nlev, idx_lo, idx_hi, col_no, &
-                                                        dt_eff/secs_per_day)
+         !# The particle BGC runs here, inside the split loop, once per sub-step with dt_eff
+         !# (upstream design). The producer stays replaceable through aed_ptm_flux_fn (test seam);
+         !# the _impl is called directly because aed_run_model already holds the API guard.
+         IF ( do_particle_bgc ) THEN
+            IF (ASSOCIATED(aed_ptm_flux_fn)) THEN
+               CALL aed_ptm_flux_fn(icolm, nlev, idx_lo, idx_hi, col_no, dt_eff/secs_per_day)
+            ELSE
+               CALL aed_calculate_particles_impl(icolm, nlev, idx_lo, idx_hi, col_no, dt_eff/secs_per_day)
+            ENDIF
+         ENDIF
 
          !# Update the water column layers
          idata%cc(1:n_vars, :) = idata%cc(1:n_vars, :) + &
@@ -1685,6 +1936,7 @@ CONTAINS
 
          CALL check_states(idata, nlev)
       ENDDO
+      aed_substep_frac = 1.0   !# 2026-09-10: back to whole-step outside the split loop
 
       CALL BioExtinction(icolm, nlev, bot, top, idata%bioextc(:))
       IF (.NOT. link_ext_par) THEN
@@ -1736,14 +1988,18 @@ CONTAINS
       INTEGER,INTENT(in) :: nlev, bot, top
    !
    !LOCALS
-      INTEGER :: lev, zon, av, sv, sd, dir = 1
+      INTEGER :: lev, zon, av, sv, sd, dir
       INTEGER :: layer_map_init(nlev)
       TYPE(aed_variable_t),POINTER :: tvar
       TYPE(aed_column_t),DIMENSION(:),POINTER :: column_sed    !# (n_aed_vars)
    !
    !----------------------------------------------------------------------------
    !BEGIN
-      if (bot > top) dir = -1
+      !# H (2026-09-11): 'dir' used to be initialised in its declaration, which makes it an
+      !# implicitly SAVEd local: one bot > top column set it to -1 for the rest of the process
+      !# and every later normal column traversed its layers zero times. Reset it every call.
+      dir = 1
+      IF (bot > top) dir = -1
 
       !# (0) WATER COLUMN INITIALISATION column-level init (e.g., bubble column setup)
       IF ( glm_style_zones ) THEN
@@ -1775,7 +2031,7 @@ CONTAINS
                sv = 0 ; sd = 0
 
                DO av=1,n_aed_vars
-                  IF ( .NOT. aed_get_var(av, tvar) ) STOP "Error getting variable info"
+                  IF ( .NOT. aed_get_var(av, tvar) ) ERROR STOP "Error getting variable info"
 
                   IF ( tvar%var_type == V_DIAGNOSTIC ) THEN  !# Diagnostic variable
                      IF ( tvar%sheet ) THEN
@@ -1904,7 +2160,7 @@ CONTAINS
 
             sv = 0 ; sd = 0
             DO av=1,n_aed_vars
-               IF ( .NOT. aed_get_var(av, tvar) ) STOP "Error getting variable info"
+               IF ( .NOT. aed_get_var(av, tvar) ) ERROR STOP "Error getting variable info"
 
                IF ( tvar%sheet ) THEN
                   IF ( tvar%var_type == V_DIAGNOSTIC ) THEN  !# Diagnostic variable
@@ -2039,7 +2295,7 @@ CONTAINS
       LOGICAL,INTENT(in) :: doSurface
    !
    !LOCALS
-      INTEGER :: lev, dir = 1
+      INTEGER :: lev, dir
       INTEGER :: layer_map(nlev)
    !
    !----------------------------------------------------------------------------
@@ -2104,7 +2360,11 @@ CONTAINS
          flux_pel(:, top) = flux_pel(:, top) + flux_atm(:)/idata%dz(top)
       ENDIF
 
-      if (bot > top)dir = -1
+      !# H (2026-09-11): 'dir' used to be initialised in its declaration, which makes it an
+      !# implicitly SAVEd local: one bot > top column set it to -1 for the rest of the process
+      !# and every later normal column traversed its layers zero times. Reset it every call.
+      dir = 1
+      IF (bot > top) dir = -1
       !# WATER CELL KINETICS
       !# Add pelagic sink and source terms in cells of all depth levels.
       DO lev=top, bot, -dir
@@ -2225,7 +2485,7 @@ CONTAINS
       INTEGER,INTENT(in) :: nlev, bot, top
    !
    !LOCALS
-      INTEGER :: lev, dir = 1
+      INTEGER :: lev, dir
       AED_REAL :: localext, localext_up, KW_2
    !
    !----------------------------------------------------------------------------
@@ -2239,7 +2499,11 @@ CONTAINS
       idata%par(top) = &
            par_fraction * idata%rad(top) * EXP( -(0.1+localext)*1e-6*idata%dz(top) )
 
-      if (bot>top) dir = -1
+      !# H (2026-09-11): 'dir' used to be initialised in its declaration, which makes it an
+      !# implicitly SAVEd local: one bot > top column set it to -1 for the rest of the process
+      !# and every later normal column traversed its layers zero times. Reset it every call.
+      dir = 1
+      IF (bot > top) dir = -1
       ! Now set the top of subsequent layers, down to the bottom
       DO lev = (top-dir), bot, -dir
          localext_up = localext
@@ -2271,7 +2535,7 @@ CONTAINS
       INTEGER, INTENT(in) :: nlev, bot, top
    !
    !LOCAL VARIABLES:
-      INTEGER  :: lev, dir = -1
+      INTEGER  :: lev, dir
       AED_REAL :: extc(1:nlev)
       AED_REAL :: zz, localext
    !
@@ -2297,6 +2561,9 @@ CONTAINS
 
       IF (nlev <= 1) RETURN
 
+      !# H (2026-09-11): 'dir' was initialised in its declaration, which makes it an implicitly
+      !# SAVEd local: one bot > top column changed it for the rest of the process. Reset every call.
+      dir = -1
       IF (bot > top) dir = 1
       ! Now set the top of subsequent layers, down to the bottom.
       ! Attenuate using the extinction of the layer being traversed (lev+dir),
@@ -2321,7 +2588,7 @@ CONTAINS
       AED_REAL, INTENT(inout) :: extc(:)
    !
    !LOCAL VARIABLES:
-      INTEGER :: i, dir = -1
+      INTEGER :: i, dir
       AED_REAL :: localext
    !
    !----------------------------------------------------------------------------
@@ -2333,6 +2600,9 @@ CONTAINS
 
       IF (nlev <= 1) RETURN
 
+      !# H (2026-09-11): 'dir' was initialised in its declaration, which makes it an implicitly
+      !# SAVEd local: one bot > top column changed it for the rest of the process. Reset every call.
+      dir = -1
       IF (bot > top) dir = 1
       DO i = top+dir, bot, dir
          CALL aed_light_extinction(icolm, i, localext)
@@ -2370,12 +2640,22 @@ CONTAINS
    !++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 
 
+END SUBROUTINE aed_run_model_impl
+
+!###############################################################################
+SUBROUTINE aed_run_model(nCols, nLevs, doSurface)   !# S5 wrapper
+!# S5 2026-09-15: guarded entry point 7 (aed_api_guard.c); the body is aed_run_model_impl, unchanged
+   INTEGER,INTENT(in) :: nCols, nLevs
+   LOGICAL,INTENT(in) :: doSurface
+   CALL aed_api_guard_enter(7)
+   CALL aed_run_model_impl(nCols, nLevs, doSurface)
+   CALL aed_api_guard_leave(7)
 END SUBROUTINE aed_run_model
 !+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 
 
 !###############################################################################
-SUBROUTINE aed_clean_model()
+SUBROUTINE aed_clean_model_impl()
 !-------------------------------------------------------------------------------
 ! Finish biogeochemical model
 !-------------------------------------------------------------------------------
@@ -2383,12 +2663,20 @@ SUBROUTINE aed_clean_model()
    CALL aed_delete()
    ! Deallocate internal arrays
    IF (ALLOCATED(ws)) DEALLOCATE(ws)
+END SUBROUTINE aed_clean_model_impl
+
+!###############################################################################
+SUBROUTINE aed_clean_model()   !# S5 wrapper
+!# S5 2026-09-15: guarded entry point 8 (aed_api_guard.c); the body is aed_clean_model_impl, unchanged
+   CALL aed_api_guard_enter(8)
+   CALL aed_clean_model_impl()
+   CALL aed_api_guard_leave(8)
 END SUBROUTINE aed_clean_model
 !+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 
 
 !###############################################################################
-INTEGER FUNCTION aed_var_index(name)
+INTEGER FUNCTION aed_var_index_impl(name)
 !-------------------------------------------------------------------------------
 !ARGUMENTS
    CHARACTER(len=*) :: name
@@ -2405,13 +2693,22 @@ INTEGER FUNCTION aed_var_index(name)
          IF ( .NOT. tv%sheet .AND. tv%var_type == V_STATE ) THEN
             v = v + 1
             IF ( name == tv%name ) THEN
-               aed_var_index = v
+               aed_var_index_impl = v
                RETURN
             ENDIF
          ENDIF
       ENDIF
    ENDDO
-   aed_var_index = -1
+   aed_var_index_impl = -1
+END FUNCTION aed_var_index_impl
+
+!###############################################################################
+INTEGER FUNCTION aed_var_index(name)   !# S5 wrapper
+!# S5 2026-09-15: guarded entry point 9 (aed_api_guard.c); the body is aed_var_index_impl, unchanged
+   CHARACTER(len=*) :: name
+   CALL aed_api_guard_enter(9)
+   aed_var_index = aed_var_index_impl(name)
+   CALL aed_api_guard_leave(9)
 END FUNCTION aed_var_index
 !+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 
