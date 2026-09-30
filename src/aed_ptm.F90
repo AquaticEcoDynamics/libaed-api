@@ -36,14 +36,28 @@ MODULE aed_ptm
 
    USE ISO_C_BINDING
    USE aed_common
-   USE aed_core, ONLY:  aed_ptm_t, aed_ptm_dt_days
+   USE aed_core, ONLY:  aed_ptm_t, aed_ptm_dt_days, aed_ptm_dt_days_set
 
    IMPLICIT NONE
 
    PRIVATE ! By default, make everything private
 
    PUBLIC aed_part_group_t, aed_ptm_init, ptm_istat, ptm_env, Particles, aed_calculate_particles, &
-          aed_split_particles, aed_ptm_set_cell_map, set_ptm_aed_var_num
+          aed_split_particles, aed_ptm_set_cell_map, set_ptm_aed_var_num, &
+          Particles_impl, aed_calculate_particles_impl, aed_split_particles_impl, &
+          set_ptm_aed_var_num_impl   !# S5: the unguarded bodies, for aed_api's internal calls only
+
+   !# S5 2026-09-15: detection-only overlap guard for the public entry points (libaed-api/src/aed_api_guard.c)
+   INTERFACE
+      SUBROUTINE aed_api_guard_enter(id) BIND(C, name="aed_api_guard_enter")
+         USE ISO_C_BINDING, ONLY : C_INT
+         INTEGER(C_INT), VALUE :: id
+      END SUBROUTINE aed_api_guard_enter
+      SUBROUTINE aed_api_guard_leave(id) BIND(C, name="aed_api_guard_leave")
+         USE ISO_C_BINDING, ONLY : C_INT
+         INTEGER(C_INT), VALUE :: id
+      END SUBROUTINE aed_api_guard_leave
+   END INTERFACE
 
    !#--------------------------------------------------------------------------#
    !# Module Types
@@ -78,14 +92,21 @@ MODULE aed_ptm
 !
 !MODULE DATA
 
-   INTEGER :: aed_n_groups
+   !# 2026-09-09: initialised. These are assigned ONLY in aed_ptm_init, and the guard that
+   !# protects every entry point - `IF (aed_n_groups == 0 .OR. aed_n_particles == 0 .OR.
+   !# n_ptm_vars == 0) RETURN` - READS them. On the one path where aed_ptm_init is not reached
+   !# (glm_ptm.c: .NOT.do_particle_bgc .AND. Num_PTM_Vars == 0) that read was of an
+   !# uninitialised variable: undefined behaviour that happened to work only because gfortran
+   !# places module data in .bss and zeroes it. Nothing currently reaches those entry points on
+   !# that path, so no behaviour changes - but the guard is now well-defined rather than
+   !# relying on the storage model.
+   INTEGER :: aed_n_groups = 0
    TYPE(aed_part_group_t),DIMENSION(:),POINTER :: particle_groups
 
-   CINTEGER,DIMENSION(:,:,:),ALLOCATABLE,TARGET :: ptm_istat
-                                                             !# AED particle data structure (NGroups,NParticles,NAttributes)
-   AED_REAL,DIMENSION(:,:,:),ALLOCATABLE,TARGET :: ptm_env   !# AED particle data structure (NGroups,NParticles,NAttributes)
-   AED_REAL,DIMENSION(:,:,:),ALLOCATABLE,TARGET :: ptm_state !# AED particle data structure (NGroups,NParticles,NAttributes)
-   AED_REAL,DIMENSION(:,:,:),ALLOCATABLE,TARGET :: ptm_diag  !# AED particle data structure (NGroups,NParticles,NAttributes)
+   CINTEGER,DIMENSION(:,:,:),ALLOCATABLE, TARGET :: ptm_istat       !# AED particle data structure (NGroups,NParticles,NAttributes)
+   AED_REAL,DIMENSION(:,:,:),ALLOCATABLE, TARGET :: ptm_env         !# AED particle data structure (NGroups,NParticles,NAttributes)
+   AED_REAL,DIMENSION(:,:,:),ALLOCATABLE, TARGET :: ptm_state       !# AED particle data structure (NGroups,NParticles,NAttributes)
+   AED_REAL,DIMENSION(:,:,:),ALLOCATABLE, TARGET :: ptm_diag        !# AED particle data structure (NGroups,NParticles,NAttributes)
 
    ! Was 6 (STAT,IDX2,IDX3,LAYR,FLAG,PTID). Bumped to 7 for aed_phyto_abm's GRP
    ! attribute (which phyto species/group a particle belongs to, added to support
@@ -95,7 +116,7 @@ MODULE aed_ptm
    INTEGER, PARAMETER :: n_ptm_istat = 7
    INTEGER, PARAMETER :: n_ptm_env   = 5
    INTEGER            :: n_ptm_vars  = 0
-   INTEGER            :: aed_n_particles
+   INTEGER            :: aed_n_particles = 0
    INTEGER            :: n_aed_vars_
 
    !# Particle groups
@@ -121,7 +142,61 @@ CONTAINS
 
 
 !###############################################################################
-SUBROUTINE aed_ptm_init(ng,np,parts,n_ptm_vars_,n_cells)
+SUBROUTINE ptm_alloc_check(rc, n, what)
+!-------------------------------------------------------------------------------
+! Fatal report for a failed or implausible ALLOCATE.
+!
+! Several ALLOCATEs in this module run EVERY TIMESTEP and carried no stat=, so a
+! failure was undefined behaviour rather than a reported error: two runs were
+! silently truncated (45 of 78 steps) with the log still saying they completed.
+!
+! stat= alone is not sufficient. A size computed from an overflowed default
+! INTEGER product can come out small or negative, and ALLOCATE of a negative
+! extent SUCCEEDS in Fortran - it yields a zero-size array - so the run would
+! continue on an array that cannot hold the particles it is about to be indexed
+! with. The size is therefore validated separately from the status.
+!-------------------------------------------------------------------------------
+!ARGUMENTS
+   INTEGER, INTENT(in) :: rc, n
+   CHARACTER(len=*), INTENT(in) :: what
+!
+!-------------------------------------------------------------------------------
+!BEGIN
+   IF (n < 0) THEN
+      WRITE(*,*) 'aed_ptm: ERROR allocating ', TRIM(what), &
+                 ' : negative element count (', n, ') - integer overflow in the size expression'
+      ERROR STOP 1
+   ENDIF
+   IF (rc /= 0) THEN
+      WRITE(*,*) 'aed_ptm: ERROR allocating ', TRIM(what), &
+                 ' : requested ', n, ' elements, stat = ', rc
+      ERROR STOP 1
+   ENDIF
+END SUBROUTINE ptm_alloc_check
+!+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+
+!###############################################################################
+INTEGER FUNCTION ptm_total_slots() RESULT(n)
+!-------------------------------------------------------------------------------
+! aed_n_particles * aed_n_groups, checked for overflow BEFORE it is formed.
+! Both are default INTEGERs, so the product silently wraps past ~2.1e9 - and the
+! wrapped value is then used as an array extent and as the upper bound of the
+! loop that fills it.
+!-------------------------------------------------------------------------------
+!BEGIN
+   IF (aed_n_groups > 0 .AND. aed_n_particles > HUGE(n)/aed_n_groups) THEN
+      WRITE(*,*) 'aed_ptm: ERROR aed_n_particles * aed_n_groups overflows a default INTEGER: ', &
+                 aed_n_particles, ' x ', aed_n_groups
+      ERROR STOP 1
+   ENDIF
+   n = aed_n_particles*aed_n_groups
+END FUNCTION ptm_total_slots
+!+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+
+!###############################################################################
+SUBROUTINE aed_ptm_init_impl(ng,np,parts,n_ptm_vars_,n_cells)
 !-------------------------------------------------------------------------------
 ! Initialise the particle tracker.
 !-------------------------------------------------------------------------------
@@ -133,6 +208,7 @@ SUBROUTINE aed_ptm_init(ng,np,parts,n_ptm_vars_,n_cells)
    TYPE(aed_variable_t),POINTER :: tvar
    TYPE(aed_ptm_t), DIMENSION(:), ALLOCATABLE :: ptm
    INTEGER :: rc, pv, av, grp, prt, ppid
+   INTEGER :: n_slots
 !
 !-------------------------------------------------------------------------------
 !BEGIN
@@ -147,24 +223,32 @@ SUBROUTINE aed_ptm_init(ng,np,parts,n_ptm_vars_,n_cells)
 
    !# Allocating AED PTM arrays : status, environment, state and diagnostic
    ALLOCATE(ptm_istat(aed_n_groups,1:aed_n_particles,1:n_ptm_istat),stat=rc)
-     IF (rc /= 0) STOP 'allocate_memory(): ERROR allocating (ptm_istat)'
+     IF (rc /= 0) ERROR STOP 'allocate_memory(): ERROR allocating (ptm_istat)'
    ALLOCATE(ptm_env(aed_n_groups,1:aed_n_particles,1:n_ptm_env+n_ptm_vars),stat=rc)
-     IF (rc /= 0) STOP 'allocate_memory(): ERROR allocating (ptm_env)'
+     IF (rc /= 0) ERROR STOP 'allocate_memory(): ERROR allocating (ptm_env)'
    ALLOCATE(ptm_state(aed_n_groups,1:aed_n_particles,1:n_ptm_vars),stat=rc)
-     IF (rc /= 0) STOP 'allocate_memory(): ERROR allocating (ptm_state)'
+     IF (rc /= 0) ERROR STOP 'allocate_memory(): ERROR allocating (ptm_state)'
    ALLOCATE(ptm_diag(aed_n_groups,1:aed_n_particles,1:n_ptm_vars),stat=rc) ! Not yet used
-     IF (rc /= 0) STOP 'allocate_memory(): ERROR allocating (ptm_diag)'
+     IF (rc /= 0) ERROR STOP 'allocate_memory(): ERROR allocating (ptm_diag)'
 
    !#---------------------------------------------------------------------------
    !# Now set initial values
    ptm_istat(:,:,:) = -9999
    ptm_env(:,:,:)   = -9999.
-   ptm_state(:,:,:) = -9999.
-   ptm_diag(:,:,:)  = -9999.
+   IF (n_ptm_vars > 0) THEN
+      ptm_state(:,:,:) = -9999.
+      ptm_diag(:,:,:)  = -9999.
+   ENDIF
+
+   IF (n_ptm_vars == 0) THEN
+      ALLOCATE(all_particles(n_cells),stat=rc)
+        CALL ptm_alloc_check(rc, n_cells, 'all_particles (no ptm vars)')
+      RETURN
+   ENDIF
 
    pv = 0;
    DO av=1,n_aed_vars_
-      IF ( .NOT.  aed_get_var(av, tvar) ) STOP "     ERROR getting variable info"
+      IF ( .NOT.  aed_get_var(av, tvar) ) ERROR STOP "     ERROR getting variable info"
       IF ( tvar%var_type == V_PARTICLE ) THEN  !# ptm variable
           pv = pv + 1
 
@@ -175,12 +259,15 @@ SUBROUTINE aed_ptm_init(ng,np,parts,n_ptm_vars_,n_cells)
       ENDIF
    ENDDO
 
-   ALLOCATE(ptm(aed_n_particles*aed_n_groups))
+   n_slots = ptm_total_slots()
+   ALLOCATE(ptm(n_slots),stat=rc)
+     CALL ptm_alloc_check(rc, n_slots, 'ptm (aed_ptm_init)')
 
    DO grp=1,aed_n_groups
      DO prt=1,aed_n_particles
          ppid = (grp-1)*aed_n_particles + prt
          ! Point single particle object to the global particle data structure
+         ptm(ppid)%ptm_group = grp
          ptm(ppid)%ptm_istat => ptm_istat(grp,prt,:)
          ptm(ppid)%ptm_env   => ptm_env(grp,prt,1:n_ptm_env)
          ptm(ppid)%ptm_state => ptm_env(grp,prt,n_ptm_env+1:n_ptm_env+n_ptm_vars)    !ptm_state(grp,prt,:)
@@ -188,9 +275,9 @@ SUBROUTINE aed_ptm_init(ng,np,parts,n_ptm_vars_,n_cells)
      ENDDO
    ENDDO !end particle loop
 
-   ppid = aed_n_particles*aed_n_groups
+   ppid = n_slots
 
-   CALL aed_initialize_particle(ppid,ptm)
+   IF (n_ptm_vars > 0) CALL aed_initialize_particle(ppid,ptm)
    DEALLOCATE(ptm)
 
    ! !TESTS
@@ -210,13 +297,25 @@ SUBROUTINE aed_ptm_init(ng,np,parts,n_ptm_vars_,n_cells)
    !
    !
    !!print*,"allocating all_parts with ", ubound(temp,1), " cells"
-   ALLOCATE(all_particles(n_cells))
+   ALLOCATE(all_particles(n_cells),stat=rc)
+     CALL ptm_alloc_check(rc, n_cells, 'all_particles (aed_ptm_init)')
+END SUBROUTINE aed_ptm_init_impl
+
+!###############################################################################
+SUBROUTINE aed_ptm_init(ng,np,parts,n_ptm_vars_,n_cells)   !# S5 wrapper
+!# S5 2026-09-15: guarded entry point 10 (aed_api_guard.c); the body is aed_ptm_init_impl, unchanged
+   CINTEGER, INTENT(in) :: ng,np
+   INTEGER,  INTENT(in) :: n_ptm_vars_, n_cells
+   TYPE(aed_part_group_t),DIMENSION(:),TARGET,INTENT(in) :: parts
+   CALL aed_api_guard_enter(10)
+   CALL aed_ptm_init_impl(ng,np,parts,n_ptm_vars_,n_cells)
+   CALL aed_api_guard_leave(10)
 END SUBROUTINE aed_ptm_init
 !+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 
 
 !###############################################################################
-SUBROUTINE Particles(n_cells)
+SUBROUTINE Particles_impl(n_cells)
 !-------------------------------------------------------------------------------
 ! Calculate biogeochemical transformations on particles
 !-------------------------------------------------------------------------------
@@ -230,6 +329,7 @@ SUBROUTINE Particles(n_cells)
    INTEGER :: ppid
    AED_REAL,DIMENSION(20) :: zz
    INTEGER :: cell, j
+   INTEGER :: rc
    AED_REAL :: dt = 3600
 
    TYPE (aed_ptm_t) :: ptm
@@ -237,7 +337,7 @@ SUBROUTINE Particles(n_cells)
 !-------------------------------------------------------------------------------
 
 !BEGIN
-   IF (aed_n_groups == 0 .OR. aed_n_particles == 0) RETURN
+   IF (aed_n_groups == 0 .OR. aed_n_particles == 0 .OR. n_ptm_vars == 0) RETURN
    zz = zero_
 
 !------------
@@ -274,7 +374,7 @@ SUBROUTINE Particles(n_cells)
       DO prt=1,aed_n_particles
          IF ( ptm_istat(grp,prt,STAT) > 0 ) THEN
             cell = ptm_istat(grp,prt,IDX3)
-            IF ( cell >= 1 .AND. cell <= size(all_particles) ) THEN
+            IF ( cell >= 1 .AND. cell <= n_cells ) THEN
                all_particles(cell)%count = all_particles(cell)%count + 1
             ENDIF
          ENDIF
@@ -283,7 +383,8 @@ SUBROUTINE Particles(n_cells)
 
    DO cell=1, size(all_particles)
       IF (all_particles(cell)%count > 0) THEN
-         ALLOCATE(all_particles(cell)%prt(all_particles(cell)%count))
+         ALLOCATE(all_particles(cell)%prt(all_particles(cell)%count),stat=rc)
+           CALL ptm_alloc_check(rc, all_particles(cell)%count, 'all_particles(:)%prt')
       ENDIF
    ENDDO
 
@@ -291,7 +392,7 @@ SUBROUTINE Particles(n_cells)
    ! populate it - a second full pass over all groups, not resumed from pass 1.
    DO grp=1,aed_n_groups
       DO prt=1,aed_n_particles
-         IF ( ptm_istat(grp,prt,STAT) <= 0 ) CYCLE  !# ignore inactive particles
+         IF ( ptm_istat(grp,prt,STAT) <= 0 ) CYCLE  !# ignore inactive particles (must match pass 1)
 
          cell = ptm_istat(grp,prt,IDX3)
          IF ( cell >= 1 .AND. cell <= size(all_particles) ) THEN
@@ -302,16 +403,25 @@ SUBROUTINE Particles(n_cells)
                all_particles(cell)%n = j
             ENDIF
          ENDIF
-      ENDDO ! particles
-   ENDDO    ! groups
+      ENDDO
+   ENDDO
 !-------
 
+END SUBROUTINE Particles_impl
+
+!###############################################################################
+SUBROUTINE Particles(n_cells)   !# S5 wrapper
+!# S5 2026-09-15: guarded entry point 11 (aed_api_guard.c); the body is Particles_impl, unchanged
+   INTEGER,  INTENT(in)    :: n_cells
+   CALL aed_api_guard_enter(11)
+   CALL Particles_impl(n_cells)
+   CALL aed_api_guard_leave(11)
 END SUBROUTINE Particles
 !+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 
 
 !###############################################################################
-SUBROUTINE aed_ptm_set_cell_map(cell_id)
+SUBROUTINE aed_ptm_set_cell_map_impl(cell_id)
 !-------------------------------------------------------------------------------
 ! Provide the host map (layer,col) -> global cell index so multi-column hosts
 ! (e.g. ELCOM) can translate a column's local levels into the global cell space
@@ -327,15 +437,24 @@ SUBROUTINE aed_ptm_set_cell_map(cell_id)
 !BEGIN
    IF (ALLOCATED(ptm_cell_id)) DEALLOCATE(ptm_cell_id)
    ALLOCATE(ptm_cell_id(size(cell_id,1),size(cell_id,2)),stat=rc)
-   IF (rc /= 0) STOP 'aed_ptm_set_cell_map(): ERROR allocating (ptm_cell_id)'
+   IF (rc /= 0) ERROR STOP 'aed_ptm_set_cell_map(): ERROR allocating (ptm_cell_id)'
    ptm_cell_id = cell_id
    have_cell_id = .TRUE.
+END SUBROUTINE aed_ptm_set_cell_map_impl
+
+!###############################################################################
+SUBROUTINE aed_ptm_set_cell_map(cell_id)   !# S5 wrapper
+!# S5 2026-09-15: guarded entry point 14 (aed_api_guard.c); the body is aed_ptm_set_cell_map_impl, unchanged
+   INTEGER,DIMENSION(:,:),INTENT(in) :: cell_id
+   CALL aed_api_guard_enter(14)
+   CALL aed_ptm_set_cell_map_impl(cell_id)
+   CALL aed_api_guard_leave(14)
 END SUBROUTINE aed_ptm_set_cell_map
 !+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 
 
 !###############################################################################
-SUBROUTINE aed_calculate_particles(icolm, nlev, idx_lo, idx_hi, col_no, dt_days)
+SUBROUTINE aed_calculate_particles_impl(icolm, nlev, idx_lo, idx_hi, col_no, dt_days)
 !-------------------------------------------------------------------------------
 !
 ! Calculate biogeochemical transformations on particles for a single column.
@@ -362,6 +481,7 @@ SUBROUTINE aed_calculate_particles(icolm, nlev, idx_lo, idx_hi, col_no, dt_days)
 !LOCAL VARIABLES:
    INTEGER :: lev, lyr, gc, grp, prt, pt
    INTEGER :: ppid
+   INTEGER :: rc
    TYPE (aed_ptm_t), DIMENSION(:), ALLOCATABLE :: ptm
    TYPE(partgroup_cell), POINTER :: layer_particles
 !
@@ -369,10 +489,14 @@ SUBROUTINE aed_calculate_particles(icolm, nlev, idx_lo, idx_hi, col_no, dt_days)
 
 !BEGIN
    !# Publish this call's biological timestep for the particle BGC models to
-   !# read (aed_core%aed_ptm_dt_days). Set before the models run, not after.
-   IF ( PRESENT(dt_days) ) aed_ptm_dt_days = dt_days
+   !# read (aed_core%aed_ptm_dt_days). Set before the models run, not after; the
+   !# flag lets consumers tell a published value from the module default.
+   IF ( PRESENT(dt_days) ) THEN
+      aed_ptm_dt_days = dt_days
+      aed_ptm_dt_days_set = .TRUE.
+   ENDIF
 
-   IF (aed_n_groups == 0 .OR. aed_n_particles == 0) RETURN
+   IF (aed_n_groups == 0 .OR. aed_n_particles == 0 .OR. n_ptm_vars == 0) RETURN
 
    DO lev=1,nlev
       lyr = idx_lo + lev - 1           !# host layer index for this local level
@@ -394,7 +518,9 @@ SUBROUTINE aed_calculate_particles(icolm, nlev, idx_lo, idx_hi, col_no, dt_days)
       ! uninitialised subscript straight into the pointer associations below.
       IF (layer_particles%n == 0) CYCLE
 
-      ALLOCATE(ptm(layer_particles%n))
+      IF (layer_particles%n == 0) CYCLE
+      ALLOCATE(ptm(layer_particles%n),stat=rc)
+        CALL ptm_alloc_check(rc, layer_particles%n, 'ptm (aed_calculate_particles)')
 
       DO pt=1,layer_particles%n
 
@@ -402,6 +528,7 @@ SUBROUTINE aed_calculate_particles(icolm, nlev, idx_lo, idx_hi, col_no, dt_days)
          grp = layer_particles%prt(pt)%grp ; prt = layer_particles%prt(pt)%idx
 
          ! Point single particle object to the global particle data structure
+         ptm(pt)%ptm_group = grp
          ptm(pt)%ptm_istat => ptm_istat(grp,prt,:)
          ptm(pt)%ptm_env   => ptm_env(grp,prt,1:n_ptm_env)
          ptm(pt)%ptm_state => ptm_env(grp,prt,n_ptm_env+1:n_ptm_env+n_ptm_vars)    !ptm_state(grp,prt,:)
@@ -416,12 +543,23 @@ SUBROUTINE aed_calculate_particles(icolm, nlev, idx_lo, idx_hi, col_no, dt_days)
       DEALLOCATE(ptm)
    ENDDO !end cell loop
 
+END SUBROUTINE aed_calculate_particles_impl
+
+!###############################################################################
+SUBROUTINE aed_calculate_particles(icolm, nlev, idx_lo, idx_hi, col_no, dt_days)   !# S5 wrapper
+!# S5 2026-09-15: guarded entry point 12 (aed_api_guard.c); the body is aed_calculate_particles_impl, unchanged
+   TYPE(aed_column_t),INTENT(inout) :: icolm(:)
+   INTEGER,INTENT(in)               :: nlev, idx_lo, idx_hi, col_no
+   AED_REAL,INTENT(in),OPTIONAL     :: dt_days
+   CALL aed_api_guard_enter(12)
+   CALL aed_calculate_particles_impl(icolm, nlev, idx_lo, idx_hi, col_no, dt_days)
+   CALL aed_api_guard_leave(12)
 END SUBROUTINE aed_calculate_particles
 !+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 
 
 !###############################################################################
-SUBROUTINE aed_split_particles()
+SUBROUTINE aed_split_particles_impl()
 !-------------------------------------------------------------------------------
 !
 ! Apply particle splitting (ABM) across ALL particle groups, once per step.
@@ -433,18 +571,22 @@ SUBROUTINE aed_split_particles()
 !-------------------------------------------------------------------------------
 !LOCAL VARIABLES:
    INTEGER :: grp, prt, ppid
+   INTEGER :: rc, n_slots
    TYPE (aed_ptm_t), DIMENSION(:), ALLOCATABLE :: ptm
 !
 !-------------------------------------------------------------------------------
 !BEGIN
-   IF (aed_n_groups == 0 .OR. aed_n_particles == 0) RETURN
+   IF (aed_n_groups == 0 .OR. aed_n_particles == 0 .OR. n_ptm_vars == 0) RETURN
 
-   ALLOCATE(ptm(aed_n_particles*aed_n_groups))
+   n_slots = ptm_total_slots()
+   ALLOCATE(ptm(n_slots),stat=rc)
+     CALL ptm_alloc_check(rc, n_slots, 'ptm (aed_split_particles)')
 
    DO grp=1,aed_n_groups
      DO prt=1,aed_n_particles
          ppid = (grp-1)*aed_n_particles + prt
          ! Point single particle object to the global particle data structure
+         ptm(ppid)%ptm_group = grp
          ptm(ppid)%ptm_istat => ptm_istat(grp,prt,:)
          ptm(ppid)%ptm_env   => ptm_env(grp,prt,1:n_ptm_env)
          ptm(ppid)%ptm_state => ptm_env(grp,prt,n_ptm_env+1:n_ptm_env+n_ptm_vars)    !ptm_state(grp,prt,:)
@@ -452,11 +594,19 @@ SUBROUTINE aed_split_particles()
      ENDDO
    ENDDO !end particle loop
 
-   ppid = aed_n_particles*aed_n_groups
+   ppid = n_slots
 
    CALL aed_split_particle(ppid,ptm)
    DEALLOCATE(ptm)
 
+END SUBROUTINE aed_split_particles_impl
+
+!###############################################################################
+SUBROUTINE aed_split_particles()   !# S5 wrapper
+!# S5 2026-09-15: guarded entry point 13 (aed_api_guard.c); the body is aed_split_particles_impl, unchanged
+   CALL aed_api_guard_enter(13)
+   CALL aed_split_particles_impl()
+   CALL aed_api_guard_leave(13)
 END SUBROUTINE aed_split_particles
 !+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 
@@ -566,7 +716,7 @@ END SUBROUTINE Particles_zz
 
 
 !###############################################################################
-SUBROUTINE set_ptm_aed_var_num(n_aed_vars)
+SUBROUTINE set_ptm_aed_var_num_impl(n_aed_vars)
 !-------------------------------------------------------------------------------
 !ARGUMENTS
    INTEGER, INTENT(in) :: n_aed_vars
@@ -578,6 +728,15 @@ SUBROUTINE set_ptm_aed_var_num(n_aed_vars)
 !BEGIN
 
   n_aed_vars_ = n_aed_vars
+END SUBROUTINE set_ptm_aed_var_num_impl
+
+!###############################################################################
+SUBROUTINE set_ptm_aed_var_num(n_aed_vars)   !# S5 wrapper
+!# S5 2026-09-15: guarded entry point 15 (aed_api_guard.c); the body is set_ptm_aed_var_num_impl, unchanged
+   INTEGER, INTENT(in) :: n_aed_vars
+   CALL aed_api_guard_enter(15)
+   CALL set_ptm_aed_var_num_impl(n_aed_vars)
+   CALL aed_api_guard_leave(15)
 END SUBROUTINE set_ptm_aed_var_num
 !+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 
