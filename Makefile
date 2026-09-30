@@ -70,7 +70,8 @@ endif
 
 OBJS=${objdir}/aed_zones.o \
      ${objdir}/aed_ptm.o   \
-     ${objdir}/aed_api.o
+     ${objdir}/aed_api.o   \
+     ${objdir}/aed_api_guard.o
 
 #WOBJS=$(shell ar t ../libaed-water/lib/libaed-water.a | sed -e 's!^!../libaed-water/obj/!')
 #BOBJS=$(shell ar t ../libaed-benthic/lib/libaed-benthic.a | sed -e 's!^!../libaed-benthic/obj/!')
@@ -87,6 +88,14 @@ else
 endif
 
 include ../libaed-water/make_rules.inc
+
+# S5 2026-09-15: the API overlap guard (plan 5.2) is C - one compare-and-swap word - and make_rules.inc has
+# only the F90 rule. build_glm.sh exports CC; GNU make's own default (cc) does not exist in this toolchain.
+ifeq ($(origin CC),default)
+  CC = gcc
+endif
+${objdir}/aed_api_guard.o: ${srcdir}/aed_api_guard.c
+	$(CC) $(DEBUG_CFLAGS) $(OPT_CFLAGS) -c $< -o $@
 
 ${objdir}/aed_external.o: ../libaed-water/src/aed_external.F90
 	$(F90) $(FFLAGS) $(EXTFFLAGS) $(OMPFLAG) -c $< -o $@
