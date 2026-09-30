@@ -49,6 +49,18 @@ MODULE aed_zones
    PUBLIC calc_zone_areas_t, copy_to_zone_t, copy_from_zone_t
    PUBLIC p_calc_zone_areas, p_copy_to_zone, p_copy_from_zone
 
+   !# S5 2026-09-15: detection-only overlap guard for the public entry points (libaed-api/src/aed_api_guard.c)
+   INTERFACE
+      SUBROUTINE aed_api_guard_enter(id) BIND(C, name="aed_api_guard_enter")
+         USE ISO_C_BINDING, ONLY : C_INT
+         INTEGER(C_INT), VALUE :: id
+      END SUBROUTINE aed_api_guard_enter
+      SUBROUTINE aed_api_guard_leave(id) BIND(C, name="aed_api_guard_leave")
+         USE ISO_C_BINDING, ONLY : C_INT
+         INTEGER(C_INT), VALUE :: id
+      END SUBROUTINE aed_api_guard_leave
+   END INTERFACE
+
    !#===========================================================#!
    !# Structured type for Zones environment
    TYPE :: api_zone_env_t
@@ -176,7 +188,7 @@ MODULE aed_zones
 CONTAINS
 
 !###############################################################################
-SUBROUTINE aed_init_zones(n_zones, n_levs, z_cc, z_cc_hz, z_diag, z_diag_hz)
+SUBROUTINE aed_init_zones_impl(n_zones, n_levs, z_cc, z_cc_hz, z_diag, z_diag_hz)
 !-------------------------------------------------------------------------------
 !ARGUMENTS
    INTEGER,INTENT(in) :: n_zones, n_levs
@@ -208,12 +220,25 @@ SUBROUTINE aed_init_zones(n_zones, n_levs, z_cc, z_cc_hz, z_diag, z_diag_hz)
 ! print*,"aedZones%z_cc(",size(aedZones(zon)%z_cc, 1),",",size(aedZones(zon)%z_cc,2),")"
    ENDDO
 
+END SUBROUTINE aed_init_zones_impl
+
+!###############################################################################
+SUBROUTINE aed_init_zones(n_zones, n_levs, z_cc, z_cc_hz, z_diag, z_diag_hz)   !# S5 wrapper
+!# S5 2026-09-15: guarded entry point 16 (aed_api_guard.c); the body is aed_init_zones_impl, unchanged
+   INTEGER,INTENT(in) :: n_zones, n_levs
+   AED_REAL,DIMENSION(:,:,:),POINTER,INTENT(in) :: z_cc
+   AED_REAL,DIMENSION(:,:),  POINTER,INTENT(in) :: z_cc_hz
+   AED_REAL,DIMENSION(:,:,:),POINTER,INTENT(in) :: z_diag
+   AED_REAL,DIMENSION(:,:)  ,POINTER,INTENT(in) :: z_diag_hz
+   CALL aed_api_guard_enter(16)
+   CALL aed_init_zones_impl(n_zones, n_levs, z_cc, z_cc_hz, z_diag, z_diag_hz)
+   CALL aed_api_guard_leave(16)
 END SUBROUTINE aed_init_zones
 !+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 
 
 !###############################################################################
-SUBROUTINE api_set_zone_funcs(copy_to, copy_from, calc_areas)
+SUBROUTINE api_set_zone_funcs_impl(copy_to, copy_from, calc_areas)
 !-------------------------------------------------------------------------------
 !ARGUMENTS
    PROCEDURE(copy_to_zone_t),POINTER    :: copy_to
@@ -227,6 +252,17 @@ SUBROUTINE api_set_zone_funcs(copy_to, copy_from, calc_areas)
    p_calc_zone_areas => calc_areas
    p_copy_to_zone    => copy_to
    p_copy_from_zone  => copy_from
+END SUBROUTINE api_set_zone_funcs_impl
+
+!###############################################################################
+SUBROUTINE api_set_zone_funcs(copy_to, copy_from, calc_areas)   !# S5 wrapper
+!# S5 2026-09-15: guarded entry point 17 (aed_api_guard.c); the body is api_set_zone_funcs_impl, unchanged
+   PROCEDURE(copy_to_zone_t),POINTER    :: copy_to
+   PROCEDURE(copy_from_zone_t),POINTER  :: copy_from
+   PROCEDURE(calc_zone_areas_t),POINTER :: calc_areas
+   CALL aed_api_guard_enter(17)
+   CALL api_set_zone_funcs_impl(copy_to, copy_from, calc_areas)
+   CALL aed_api_guard_leave(17)
 END SUBROUTINE api_set_zone_funcs
 !+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 
