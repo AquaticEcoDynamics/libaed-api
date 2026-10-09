@@ -408,6 +408,9 @@ MODULE aed_api
    AED_REAL,ALLOCATABLE,TARGET :: flux_pel(:,:)        !# (n_vars, MAX(n_layers, aed_n_zones))
    AED_REAL,DIMENSION(:,:),ALLOCATABLE :: flux_pel_pre !# (n_vars+n_vars_ben, MAX(n_layers, aed_n_zones))
    AED_REAL,DIMENSION(:,:),ALLOCATABLE :: flux_pel_z   !# (n_vars+n_vars_ben, MAX(n_layers, aed_n_zones))
+   !# water-column fluxes from aed_calculate_column, held aside while glm_benthics
+   !# uses flux_pel as zone scratch space (it overwrites every layer)
+   AED_REAL,DIMENSION(:,:),ALLOCATABLE :: flux_pel_col !# (n_vars+n_vars_ben, MAX(n_layers, aed_n_zones))
 
 #ifdef f2003
    USE, intrinsic :: iso_fortran_env, ONLY : stdin=>input_unit, &
@@ -718,6 +721,7 @@ SUBROUTINE aed_set_model_data(dat, ncols, nlevs)
    IF (.NOT.ALLOCATED(flux_pel))     ALLOCATE(flux_pel(    n_vars+n_vars_ben, MAX(MaxLayers, aed_n_zones)))
    IF (.NOT.ALLOCATED(flux_pel_pre)) ALLOCATE(flux_pel_pre(n_vars+n_vars_ben, MAX(MaxLayers, aed_n_zones)))
    IF (.NOT.ALLOCATED(flux_pel_z))   ALLOCATE(flux_pel_z(  n_vars+n_vars_ben, MAX(MaxLayers, aed_n_zones)))
+   IF (.NOT.ALLOCATED(flux_pel_col)) ALLOCATE(flux_pel_col(n_vars+n_vars_ben, MAX(MaxLayers, aed_n_zones)))
 
    !# Should have been done in the env setup
    IF (.NOT. ALLOCATED(data) ) ALLOCATE(data(ncols))
@@ -1820,9 +1824,8 @@ CONTAINS
    !
    !LOCALS
       INTEGER  :: lev,zon,v,av,sv,sd
-      AED_REAL :: scale, cumu_area
+      AED_REAL :: scale, lo, hi, zlo, zhi
       AED_REAL :: localrainl, localshade, localdrag
-      LOGICAL  :: splitZone
       TYPE(aed_variable_t),POINTER :: tvar
       TYPE(aed_column_t),DIMENSION(:),POINTER :: column_sed    !# (n_aed_vars)
       INTEGER :: layer_map(nlev), zlev
@@ -1845,7 +1848,7 @@ CONTAINS
          !# Skip -ve values, as GEO_ubalchg is -ve and doesnt not comply with this logic
          DO v=1,n_vars
             IF ( idata%cc(v, bot) >= 0.0 ) &
-               flux_pel(v, bot) = max(-1.0 * idata%cc(v, bot), flux_pel(v, bot)/idata%dz(bot))
+               flux_pel(v, bot) = max(-1.0 * idata%cc(v, bot)/dt_eff, flux_pel(v, bot)/idata%dz(bot))
          END DO
       !# --------------------------------------
       CASE ( 1 )
@@ -1863,7 +1866,7 @@ CONTAINS
          !# Skip -ve values, as GEO_ubalchg is -ve and doesnt not comply with this logic
          DO v=1,n_vars
             IF ( idata%cc(v, bot) >= 0.0 ) &
-               flux_pel(v, bot) = max(-1.0 * idata%cc(v, bot), flux_pel(v, bot)/idata%dz(bot))
+               flux_pel(v, bot) = max(-1.0 * idata%cc(v, bot)/dt_eff, flux_pel(v, bot)/idata%dz(bot))
          END DO
 
 !$OMP DO
@@ -1877,7 +1880,7 @@ CONTAINS
             !# scaled to proportion of area that is "bottom"
             DO v=1,n_vars
                IF ( idata%cc(v, lev) >= 0.0 ) flux_pel(v, lev) = &
-                                max(-1.0 * idata%cc(v, lev), flux_pel(v, lev)/idata%dz(lev))
+                                max(-1.0 * idata%cc(v, lev)/dt_eff, flux_pel(v, lev)/idata%dz(lev))
             END DO
             flux_pel(:, lev) = flux_pel(:, lev) * (idata%area(lev)-idata%area(lev-1))/idata%area(lev)
          ENDDO
@@ -1975,49 +1978,42 @@ CONTAINS
          ENDDO
 !$OMP END DO
 
-         !# Disaggregation of zone induced fluxes to overlying layers
-         zon = aed_n_zones
-         DO lev=nlev,1,-1
-            IF ( zon > 1 ) THEN
-               IF (lev > 1) THEN
-                  splitZone = idata%lheights(lev-1) < aedZones(zon-1)%z_env%z_height
+         !# Disaggregation of zone induced fluxes to overlying layers: each layer
+         !# takes each zone's flux (per m2 of bed) weighted by the share of its
+         !# height range lying in that zone, the same shares the host uses for the
+         !# zone areas, so the mass delivered equals sum(zone flux * zone area).
+         !# The bottom zone extends down to the bed and the top zone upward.
+         DO lev=1,nlev
+            lo = zero_ ; IF (lev > 1) lo = idata%lheights(lev-1)
+            hi = idata%lheights(lev)
+            flux_pel(1:n_vars,lev) = zero_
+            DO zon=1,aed_n_zones
+               zlo = -1.0e30 ; IF (zon > 1) zlo = aedZones(zon-1)%z_env%z_height
+               zhi =  1.0e30 ; IF (zon < aed_n_zones) zhi = aedZones(zon)%z_env%z_height
+               IF ( hi > lo ) THEN
+                  scale = MAX(zero_, MIN(hi, zhi) - MAX(lo, zlo)) / (hi - lo)
                ELSE
-                  splitZone = 0.0 < aedZones(zon-1)%z_env%z_height
+                  scale = zero_ ; IF ( hi > zlo .AND. hi <= zhi ) scale = one_
                ENDIF
-            ELSE
-               splitZone = .FALSE.
-            ENDIF
-
-            IF (splitZone) THEN
-               IF (lev > 1) THEN
-                  scale = (aedZones(zon-1)%z_env%z_height - idata%lheights(lev-1)) / &
-                                              (idata%lheights(lev) - idata%lheights(lev-1))
-               ELSE
-                  scale = (aedZones(zon-1)%z_env%z_height - 0.0) / (idata%lheights(lev) - 0.0)
-               ENDIF
-               flux_pel(1:n_vars,lev) = flux_pel_z(1:n_vars,zon) * scale
-
-               zon = zon - 1
-
-               flux_pel(1:n_vars,lev) = flux_pel(1:n_vars,lev) + &
-                                        flux_pel_z(1:n_vars,zon) * (1.0 - scale)
-            ELSE
-               flux_pel(1:n_vars,lev) = flux_pel_z(1:n_vars,zon)
-            ENDIF
+               IF ( scale > zero_ ) flux_pel(1:n_vars,lev) = flux_pel(1:n_vars,lev) + &
+                                                       flux_pel_z(1:n_vars,zon) * scale
+            ENDDO
          ENDDO
          !# Limit flux out of bottom waters to concentration of that layer
-         !# i.e. don't flux out more than is there & distribute
-         !# bottom flux into pelagic over bottom box (i.e., divide by layer height).
-         !# scaled to proportion of layer area that is "bottom"
-         !# idata%area is incremental; accumulate running sum to get cumulative area,
-         !# matching glm_aed.F90 which uses cumulative area(lev) directly.
-         cumu_area = zero_
+         !# i.e. don't flux out more than is there & distribute the
+         !# bottom flux (per m2 of sediment) into the layer it sits under.
+         !# idata%area is incremental, i.e. the sediment area exposed in this
+         !# layer, so mass/s = flux * area(lev), and the concentration rate is
+         !# that over the TRUE layer volume. Dividing by cumulative area * dz
+         !# instead over-counts the volume of a basin that narrows downward,
+         !# and lost ~15% of every sediment flux in the BARC hypsograph.
          DO lev=1,nlev
-            cumu_area = cumu_area + idata%area(lev)
-            IF (lev > 1) flux_pel(:, lev) = flux_pel(:, lev) * idata%area(lev)/cumu_area
+            flux_pel(:, lev) = flux_pel(:, lev) * idata%area(lev)
             DO v=1,n_vars
-              IF ( idata%cc(v, 1) .GE. 0.0 ) flux_pel(v, lev) = &
-                             max(-1.0 * idata%cc(v, lev), flux_pel(v, lev)/idata%dz(lev))
+              !# cap: a sink may not remove more than the layer holds within one
+              !# step (-cc/dt_eff, a rate like the flux); test this layer's own sign
+              IF ( idata%cc(v, lev) .GE. 0.0 ) flux_pel(v, lev) = &
+                             max(-1.0 * idata%cc(v, lev)/dt_eff, flux_pel(v, lev)/idata%vol(lev))
             END DO
          ENDDO
       CASE DEFAULT
@@ -2072,7 +2068,14 @@ CONTAINS
             layer_map(lev) = 1 + nlev - lev   ! top-to-bottom, matching GLM convention
          ENDDO
          CALL aed_calculate_column(icolm, layer_map)
+
+         !# glm_benthics uses flux_pel as zone scratch and then assigns every
+         !# layer, which would discard the fluxes aed_calculate_column just added
+         !# (e.g. macrophyte epiphyte exchange). Hold them aside and add back.
+         flux_pel_col = flux_pel
+         flux_pel = zero_
          CALL glm_benthics(icolm, idata, nlev, bot)
+         flux_pel = flux_pel + flux_pel_col
       ELSE
          !# COLUMN
          !# Now update any column diagnostics (e.g., used for light)
@@ -2100,8 +2103,17 @@ CONTAINS
       IF (doSurface) THEN !# no surface exchange under ice cover
          CALL aed_calculate_surface(icolm, top)
 
-         !# Distribute the fluxes into pelagic surface layer
-         flux_pel(:, top) = flux_pel(:, top) + flux_atm(:)/idata%dz(top)
+         !# Distribute the fluxes (per m2 of water surface) into the pelagic
+         !# surface layer. GLM layers narrow downward, so the top layer's volume
+         !# is less than surface area * dz: deliver flux * surface area into the
+         !# TRUE layer volume (idata%area is incremental in GLM, so its sum over
+         !# the column is the surface area). ELCOM cells are prisms, where
+         !# vol/dz is the surface area, so the original form is exact there.
+         IF ( glm_style_zones ) THEN
+            flux_pel(:, top) = flux_pel(:, top) + flux_atm(:)*SUM(idata%area(1:nlev))/idata%vol(top)
+         ELSE
+            flux_pel(:, top) = flux_pel(:, top) + flux_atm(:)/idata%dz(top)
+         ENDIF
       ENDIF
 
       if (bot > top)dir = -1
