@@ -2106,9 +2106,12 @@ CONTAINS
          !# Distribute the fluxes (per m2 of water surface) into the pelagic
          !# surface layer. GLM layers narrow downward, so the top layer's volume
          !# is less than surface area * dz: deliver flux * surface area into the
-         !# TRUE layer volume (idata%area is incremental in GLM, so its sum over
-         !# the column is the surface area). ELCOM cells are prisms, where
-         !# vol/dz is the surface area, so the original form is exact there.
+         !# TRUE layer volume.
+         !# In GLM, idata%area(lev) is the lakebed ring between a layer's bottom
+         !# and top (area_top(lev) - area_top(lev-1)), so summing it over the
+         !# column telescopes to area_top(surface layer) = the lake surface area.
+         !# ELCOM cells are prisms, where vol/dz is the surface area, so the
+         !# original form is exact there.
          IF ( glm_style_zones ) THEN
             flux_pel(:, top) = flux_pel(:, top) + flux_atm(:)*SUM(idata%area(1:nlev))/idata%vol(top)
          ELSE
