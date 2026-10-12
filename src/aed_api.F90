@@ -1824,7 +1824,7 @@ CONTAINS
    !
    !LOCALS
       INTEGER  :: lev,zon,v,av,sv,sd
-      AED_REAL :: scale, lo, hi, zlo, zhi
+      AED_REAL :: scale, lo, hi, zlo, zhi, alo, ahi, acum, a1, a2
       AED_REAL :: localrainl, localshade, localdrag
       TYPE(aed_variable_t),POINTER :: tvar
       TYPE(aed_column_t),DIMENSION(:),POINTER :: column_sed    !# (n_aed_vars)
@@ -1980,20 +1980,36 @@ CONTAINS
 
          !# Disaggregation of zone induced fluxes to overlying layers: each layer
          !# takes each zone's flux (per m2 of bed) weighted by the share of its
-         !# height range lying in that zone, the same shares the host uses for the
-         !# zone areas, so the mass delivered equals sum(zone flux * zone area).
-         !# The bottom zone extends down to the bed and the top zone upward.
+         !# bed lying in that zone, the same shares the host uses for the zone
+         !# areas, so the mass delivered equals sum(zone flux * zone area).
+         !# The bed between two heights is the difference of the plan areas
+         !# there: the layer's own (cumulative) areas at its bottom and top, and
+         !# the host-supplied z_top_area where a zone boundary cuts the layer.
+         !# If the host gives no z_top_area (-1), or the layer has no bed, the
+         !# layer is shared by height instead. The bottom zone extends down to
+         !# the bed and the top zone upward.
+         acum = zero_
          DO lev=1,nlev
             lo = zero_ ; IF (lev > 1) lo = idata%lheights(lev-1)
             hi = idata%lheights(lev)
+            alo = acum ; ahi = acum + idata%area(lev) ; acum = ahi
             flux_pel(1:n_vars,lev) = zero_
             DO zon=1,aed_n_zones
                zlo = -1.0e30 ; IF (zon > 1) zlo = aedZones(zon-1)%z_env%z_height
                zhi =  1.0e30 ; IF (zon < aed_n_zones) zhi = aedZones(zon)%z_env%z_height
-               IF ( hi > lo ) THEN
-                  scale = MAX(zero_, MIN(hi, zhi) - MAX(lo, zlo)) / (hi - lo)
-               ELSE
+               IF ( hi <= lo ) THEN
                   scale = zero_ ; IF ( hi > zlo .AND. hi <= zhi ) scale = one_
+               ELSEIF ( hi <= zlo .OR. lo >= zhi ) THEN
+                  scale = zero_
+               ELSE
+                  scale = MAX(zero_, MIN(hi, zhi) - MAX(lo, zlo)) / (hi - lo)
+                  IF ( ahi > alo ) THEN
+                     a1 = alo ; IF ( lo < zlo ) a1 = aedZones(zon-1)%z_env%z_top_area
+                     a2 = ahi ; IF ( hi > zhi ) a2 = aedZones(zon)%z_env%z_top_area
+                     IF ( (lo >= zlo .OR. aedZones(MAX(zon-1,1))%z_env%z_top_area >= zero_) .AND. &
+                          (hi <= zhi .OR. aedZones(zon)%z_env%z_top_area >= zero_) )             &
+                        scale = MIN(one_, MAX(zero_, (a2 - a1) / (ahi - alo)))
+                  ENDIF
                ENDIF
                IF ( scale > zero_ ) flux_pel(1:n_vars,lev) = flux_pel(1:n_vars,lev) + &
                                                        flux_pel_z(1:n_vars,zon) * scale

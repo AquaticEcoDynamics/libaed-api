@@ -101,6 +101,11 @@ MODULE aed_zones
       AED_REAL :: z_solarshade
       AED_REAL :: z_windshade
       AED_REAL :: z_rainloss
+
+      !# plan area at z_height (bed area below the zone top), set by the host.
+      !# glm_benthics shares a layer's bed between zones by area when this is
+      !# set (>= 0) and by height when it is left at -1.
+      AED_REAL :: z_top_area = -1.0
    END TYPE api_zone_env_t
    !#===========================================================#!
 
