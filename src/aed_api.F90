@@ -1696,7 +1696,15 @@ CONTAINS
          ! glm_aed.F90 update_light writes extc(i) only for i = nlev-1 down to 1,
          ! skipping the surface layer. Matching that here prevents over-attenuation
          ! of shortwave in GLM's thermodynamics at the surface layer.
-         idata%extc(bot:top-1) = idata%bioextc(bot:top-1) + Kw
+         ! idata%extc is the host's ExtcCoefSW, used next by the host to heat the
+         ! water: it carries the biotic extinction only with bioshade_feedback,
+         ! otherwise Kw alone (Light gives AED the full extinction for its own
+         ! light at the start of each step).
+         IF (bioshade_feedback) THEN
+            idata%extc(bot:top-1) = idata%bioextc(bot:top-1) + Kw
+         ELSE
+            idata%extc(bot:top-1) = Kw
+         ENDIF
       ENDIF
       IF (.NOT. bioshade_feedback) THEN
          ! Disble the extinction coefficient feedback to the host
@@ -1995,6 +2003,15 @@ CONTAINS
             alo = acum ; ahi = acum + idata%area(lev) ; acum = ahi
             flux_pel(1:n_vars,lev) = zero_
             DO zon=1,aed_n_zones
+               IF ( ASSOCIATED(aedZones(zon)%z_share) ) THEN
+                  !# the host's shares for this step (the same ones it used for
+                  !# the zone areas and the zone views)
+                  scale = aedZones(zon)%z_share(lev)
+                  IF ( scale > zero_ ) flux_pel(1:n_vars,lev) = flux_pel(1:n_vars,lev) + &
+                                                          flux_pel_z(1:n_vars,zon) * scale
+                  CYCLE
+               ENDIF
+               !# host gave no shares: compute them here
                zlo = -1.0e30 ; IF (zon > 1) zlo = aedZones(zon-1)%z_env%z_height
                zhi =  1.0e30 ; IF (zon < aed_n_zones) zhi = aedZones(zon)%z_env%z_height
                IF ( hi <= lo ) THEN

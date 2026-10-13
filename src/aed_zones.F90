@@ -123,6 +123,12 @@ MODULE aed_zones
 
       AED_REAL,POINTER :: longitude   => null()
       AED_REAL,POINTER :: latitude    => null()
+
+      !# Contact shares, z_share(lev) = fraction of layer lev's bed lying in this
+      !# zone. Set by the host once per host step (with the zone areas) so every
+      !# layer-zone mapping uses the same numbers. Left unassociated by a host that
+      !# does not provide them, in which case glm_benthics computes the shares.
+      AED_REAL,DIMENSION(:),POINTER :: z_share => null()
    END TYPE api_zone_t
    !#===========================================================#!
 
