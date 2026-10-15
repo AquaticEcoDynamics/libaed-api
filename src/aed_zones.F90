@@ -48,6 +48,7 @@ MODULE aed_zones
    PUBLIC api_zone_t, aedZones, aed_n_zones
    PUBLIC calc_zone_areas_t, copy_to_zone_t, copy_from_zone_t
    PUBLIC p_calc_zone_areas, p_copy_to_zone, p_copy_from_zone
+   PUBLIC deposit_zone_t, p_deposit_zone, api_set_zone_dep_func
 
    !#===========================================================#!
    !# Structured type for Zones environment
@@ -177,12 +178,23 @@ MODULE aed_zones
      END SUBROUTINE copy_from_zone_t
      !+++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 
+     !#########################################################
+     !# Map mass deposited per layer (mmol, on each layer's bed strip) onto the
+     !# zones (mmol per zone), with the same shares as the zone areas (K19, K20)
+     SUBROUTINE deposit_zone_t(n_zones, dep, wlev, zmass)
+        INTEGER,INTENT(in) :: n_zones, wlev
+        AED_REAL,DIMENSION(:),INTENT(in)  :: dep
+        AED_REAL,DIMENSION(:),INTENT(out) :: zmass
+     END SUBROUTINE deposit_zone_t
+     !+++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
    END INTERFACE
    !----------------------------------------------------------------------------
 
    PROCEDURE(calc_zone_areas_t),POINTER :: p_calc_zone_areas => null()
    PROCEDURE(copy_to_zone_t),   POINTER :: p_copy_to_zone    => null()
    PROCEDURE(copy_from_zone_t), POINTER :: p_copy_from_zone  => null()
+   PROCEDURE(deposit_zone_t),   POINTER :: p_deposit_zone    => null()
 
 CONTAINS
 
@@ -239,6 +251,22 @@ SUBROUTINE api_set_zone_funcs(copy_to, copy_from, calc_areas)
    p_copy_to_zone    => copy_to
    p_copy_from_zone  => copy_from
 END SUBROUTINE api_set_zone_funcs
+!+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+
+!###############################################################################
+SUBROUTINE api_set_zone_dep_func(dep_fn)
+!-------------------------------------------------------------------------------
+! Optional: a host that can map layer deposition onto its zones registers it
+! here; together with aed_set_mobility_dep_fn this makes the API deliver settled
+! mass to the benthic pools (K19, K20). Hosts that do not call it are unchanged.
+!-------------------------------------------------------------------------------
+!ARGUMENTS
+   PROCEDURE(deposit_zone_t),POINTER :: dep_fn
+!-------------------------------------------------------------------------------
+!BEGIN
+   p_deposit_zone => dep_fn
+END SUBROUTINE api_set_zone_dep_func
 !+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 
 
