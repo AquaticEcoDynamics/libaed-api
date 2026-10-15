@@ -58,7 +58,8 @@ MODULE aed_api
           aed_set_mobility_dep_fn, aed_mobility_dep_fn_t, &
           aed_run_model,                                 &
           aed_clean_model,                               &
-          aed_var_index
+          aed_var_index,                                 &
+          aed_set_zone_ben_restart
 
 
    !#===========================================================#!
@@ -398,6 +399,9 @@ MODULE aed_api
 
    AED_REAL :: dt_eff
    LOGICAL :: reinited = .FALSE.
+   !# Per-zone benthic states from a restart file (n_vars_ben, n_zones), applied
+   !# by re_initialize right after it has reset every zone from cc_hz (K27).
+   AED_REAL,DIMENSION(:,:),ALLOCATABLE :: zone_ben_restart
    LOGICAL :: glm_style_zones = .FALSE.
 
    TYPE(aed_column_t),DIMENSION(:,:),ALLOCATABLE,TARGET :: all_cols !# (n_aed_vars, ncols)
@@ -482,6 +486,24 @@ MODULE aed_api
 
 !===============================================================================
 CONTAINS
+
+!###############################################################################
+SUBROUTINE aed_set_zone_ben_restart(nben, nzones, buf)
+!-------------------------------------------------------------------------------
+! Hold per-zone benthic states read from a restart file; re_initialize applies
+! them after its first-step reset of the zones (K27).
+!-------------------------------------------------------------------------------
+!ARGUMENTS
+   INTEGER,INTENT(in)  :: nben, nzones
+   AED_REAL,INTENT(in) :: buf(nben, nzones)
+!-------------------------------------------------------------------------------
+!BEGIN
+   IF ( ALLOCATED(zone_ben_restart) ) DEALLOCATE(zone_ben_restart)
+   ALLOCATE(zone_ben_restart(nben, nzones))
+   zone_ben_restart = buf
+END SUBROUTINE aed_set_zone_ben_restart
+!+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
 
 
 #if 0
@@ -1995,6 +2017,13 @@ CONTAINS
 
                CALL aed_initialize_benthic(column_sed, zon)
             ENDDO
+            !# On a restart, every zone gets back its own benthic states (K27)
+            IF ( ALLOCATED(zone_ben_restart) ) THEN
+               DO zon=1,MIN(aed_n_zones, SIZE(zone_ben_restart, 2))
+                  aedZones(zon)%z_cc_hz(1:n_vars_ben) = zone_ben_restart(1:n_vars_ben, zon)
+               ENDDO
+               DEALLOCATE(zone_ben_restart)
+            ENDIF
          ENDIF
       ELSE
          !# assumes only GLM does the odd zoning stuff
