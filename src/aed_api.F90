@@ -411,6 +411,18 @@ MODULE aed_api
    !# water-column fluxes from aed_calculate_column, held aside while glm_benthics
    !# uses flux_pel as zone scratch space (it overwrites every layer)
    AED_REAL,DIMENSION(:,:),ALLOCATABLE :: flux_pel_col !# (n_vars+n_vars_ben, MAX(n_layers, aed_n_zones))
+   !# Sheet diagnostics written by aed_calculate_surface this sub-step (air-water
+   !# fluxes such as OXY_oxy_atm). With sediment zones the zone copy-back rebuilds
+   !# cc_diag_hz from the zone values, which never contain them; these are put
+   !# back afterwards (known issue K15).
+   AED_REAL,DIMENSION(:),ALLOCATABLE :: srf_diag_hz
+   LOGICAL, DIMENSION(:),ALLOCATABLE :: srf_diag_set
+   !# With split_factor > 1 the per-step (rezero) diagnostics are averaged over the
+   !# sub-steps, so the output holds the step's mean flux, not the last sub-step's
+   !# (known issue K18). rz_d / rz_s flag the rezero layer and sheet diagnostics that are rates (units
+   !# per time, e.g. mmol/m2/d); state-like diagnostics (mmol/m3, -, counts) keep the
+   !# end-of-step value, consistent with the states.
+   LOGICAL, DIMENSION(:),ALLOCATABLE :: rz_d, rz_s
 
 #ifdef f2003
    USE, intrinsic :: iso_fortran_env, ONLY : stdin=>input_unit, &
@@ -1632,8 +1644,11 @@ CONTAINS
       INTEGER,INTENT(in) :: idx_lo, idx_hi, col_no
    !
    !LOCALS
-      INTEGER  :: v, lev, zon, split
+      INTEGER  :: v, lev, zon, split, i, d, sd
       AED_REAL :: localext, localext_up
+      TYPE(aed_variable_t),POINTER :: tv
+      AED_REAL,DIMENSION(:,:),ALLOCATABLE :: acc_d, acc_z   !# sub-step sums (K18)
+      AED_REAL,DIMENSION(:),  ALLOCATABLE :: acc_s
    !
    !----------------------------------------------------------------------------
    !BEGIN
@@ -1641,6 +1656,29 @@ CONTAINS
 
       IF (benthic_mode > 1 .and. ASSOCIATED(p_calc_zone_areas)) &
          CALL p_calc_zone_areas(aedZones, aed_n_zones, idata%area, idata%lheights, nlev)
+
+      IF ( split_factor > 1 ) THEN
+         IF ( .NOT. ALLOCATED(rz_d) ) THEN
+            ALLOCATE(rz_d(n_vars_diag), rz_s(n_vars_diag_sheet))
+            rz_d = .FALSE. ; rz_s = .FALSE. ; d = 0 ; sd = 0
+            DO i = 1, n_aed_vars
+               IF ( aed_get_var(i, tv) ) THEN
+                  IF ( tv%var_type == V_DIAGNOSTIC ) THEN
+                     IF ( tv%sheet ) THEN
+                        sd = sd + 1 ; rz_s(sd) = tv%rezero .AND. is_rate_unit(tv%units)
+                     ELSE
+                        d = d + 1 ; rz_d(d) = tv%rezero .AND. is_rate_unit(tv%units)
+                     ENDIF
+                  ENDIF
+               ENDIF
+            ENDDO
+         ENDIF
+         ALLOCATE(acc_d(SIZE(idata%cc_diag,1), nlev), acc_s(SIZE(idata%cc_diag_hz)))
+         acc_d = zero_ ; acc_s = zero_
+         IF ( benthic_mode > 1 ) THEN
+            ALLOCATE(acc_z(n_vars_diag_sheet, aed_n_zones)) ; acc_z = zero_
+         ENDIF
+      ENDIF
 
       DO split=1,split_factor
          IF (benthic_mode > 1 .and. ASSOCIATED(p_copy_to_zone)) &
@@ -1660,6 +1698,11 @@ CONTAINS
          idata%uvb(:) = (idata%par(:)/par_fraction) * uvb_fraction
 
          !# Time-integrate one biological time step
+         IF ( benthic_mode > 1 ) THEN
+            IF ( .NOT. ALLOCATED(srf_diag_hz) ) &
+               ALLOCATE(srf_diag_hz(SIZE(idata%cc_diag_hz)), srf_diag_set(SIZE(idata%cc_diag_hz)))
+            srf_diag_set = .FALSE.
+         ENDIF
          CALL calculate_fluxes(icolm, idata, nlev, bot, top, doSurface)
 
          IF ( do_particle_bgc ) &
@@ -1682,13 +1725,43 @@ CONTAINS
             !# Distribute cc-sed benthic properties back into main cc array
             CALL p_copy_from_zone(aedZones, aed_n_zones, idata%lheights, idata%cc,  &
                                  idata%cc_hz, idata%cc_diag, idata%cc_diag_hz, nlev)
+            !# Restore the surface (air-water) sheet diagnostics that the zone
+            !# copy-back has just overwritten (K15)
+            WHERE (srf_diag_set) idata%cc_diag_hz = srf_diag_hz
          ELSE
             idata%cc_hz(1:n_vars_ben) = idata%cc_hz(1:n_vars_ben) + &
                                      dt_eff*flux_ben(n_vars+1:n_vars+n_vars_ben)
          ENDIF
 
          CALL check_states(idata, nlev)
+
+         IF ( split_factor > 1 ) THEN   !# accumulate this sub-step's diagnostics (K18)
+            acc_d = acc_d + idata%cc_diag(:, 1:nlev)
+            acc_s = acc_s + idata%cc_diag_hz
+            IF ( benthic_mode > 1 ) THEN
+               DO zon = 1, aed_n_zones
+                  acc_z(:, zon) = acc_z(:, zon) + aedZones(zon)%z_cc_diag_hz(1:n_vars_diag_sheet)
+               ENDDO
+            ENDIF
+         ENDIF
       ENDDO
+
+      IF ( split_factor > 1 ) THEN
+         !# per-step diagnostics: the mean over the sub-steps (K18)
+         DO i = 1, SIZE(rz_d)
+            IF ( rz_d(i) ) idata%cc_diag(i, 1:nlev) = acc_d(i, :) / split_factor
+         ENDDO
+         WHERE (rz_s) idata%cc_diag_hz = acc_s / split_factor
+         IF ( benthic_mode > 1 ) THEN
+            DO zon = 1, aed_n_zones
+               DO i = 1, n_vars_diag_sheet
+                  IF ( rz_s(i) ) aedZones(zon)%z_cc_diag_hz(i) = acc_z(i, zon) / split_factor
+               ENDDO
+            ENDDO
+            DEALLOCATE(acc_z)
+         ENDIF
+         DEALLOCATE(acc_d, acc_s)
+      ENDIF
 
       CALL BioExtinction(icolm, nlev, bot, top, idata%bioextc(:))
       IF (.NOT. link_ext_par) THEN
@@ -2134,7 +2207,13 @@ CONTAINS
       !# SURFACE FLUXES
       !# Calculate temporal derivatives due to air-water exchange.
       IF (doSurface) THEN !# no surface exchange under ice cover
+         IF ( benthic_mode > 1 .AND. ALLOCATED(srf_diag_hz) ) srf_diag_hz = idata%cc_diag_hz
          CALL aed_calculate_surface(icolm, top)
+         IF ( benthic_mode > 1 .AND. ALLOCATED(srf_diag_hz) ) THEN
+            !# remember the sheet diagnostics the surface routine wrote (K15)
+            srf_diag_set = ( idata%cc_diag_hz /= srf_diag_hz )
+            srf_diag_hz  = idata%cc_diag_hz
+         ENDIF
 
          !# Distribute the fluxes (per m2 of water surface) into the pelagic
          !# surface layer. GLM layers narrow downward, so the top layer's volume
@@ -2461,6 +2540,32 @@ INTEGER FUNCTION aed_var_index(name)
    ENDDO
    aed_var_index = -1
 END FUNCTION aed_var_index
+!+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+
+!###############################################################################
+LOGICAL FUNCTION is_rate_unit(units)
+!-------------------------------------------------------------------------------
+! True if a diagnostic's units are per time (a rate or flux, e.g. mmol/m2/d,
+! mmol N/m3/day, mg C m-3 d-1, umol/m2/s). Used to average such diagnostics over
+! AED sub-steps (known issue K18); other diagnostics keep their end-of-step value.
+!-------------------------------------------------------------------------------
+!ARGUMENTS
+   CHARACTER(len=*),INTENT(in) :: units
+!LOCALS
+   CHARACTER(len=LEN(units)) :: u
+   INTEGER :: i, c
+!-------------------------------------------------------------------------------
+!BEGIN
+   u = units
+   DO i = 1, LEN(u)   !# lower case
+      c = ICHAR(u(i:i))
+      IF ( c >= ICHAR('A') .AND. c <= ICHAR('Z') ) u(i:i) = CHAR(c + 32)
+   ENDDO
+   is_rate_unit = INDEX(u, '/d') > 0 .OR. INDEX(u, 'd-1') > 0 .OR. &
+                  INDEX(u, '/s') > 0 .OR. INDEX(u, 's-1') > 0 .OR. &
+                  INDEX(u, '/h') > 0 .OR. INDEX(u, '/yr') > 0
+END FUNCTION is_rate_unit
 !+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 
 END MODULE aed_api
