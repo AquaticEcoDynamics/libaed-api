@@ -1492,6 +1492,10 @@ SUBROUTINE aed_run_model(nCols, nLevs, doSurface)
    !# after every column has been processed, not per-column.
    IF (do_particle_bgc) CALL aed_split_particles()
 
+   !# Whole-domain tasks (e.g. a coupled groundwater solve) run once per host
+   !# step, after every column has handed over its state.
+   CALL aed_calculate_domain()
+
    reinited = .TRUE.
 
 !-------------------------------------------------------------------------------
