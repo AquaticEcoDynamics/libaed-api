@@ -55,9 +55,11 @@ MODULE aed_api
           aed_set_model_data,     aed_data_t,            &
           aed_check_model_setup,                         &
           aed_set_mobility_fn,    aed_mobility_fn_t,     &
+          aed_set_mobility_dep_fn, aed_mobility_dep_fn_t, &
           aed_run_model,                                 &
           aed_clean_model,                               &
-          aed_var_index
+          aed_var_index,                                 &
+          aed_set_zone_ben_restart
 
 
    !#===========================================================#!
@@ -397,6 +399,9 @@ MODULE aed_api
 
    AED_REAL :: dt_eff
    LOGICAL :: reinited = .FALSE.
+   !# Per-zone benthic states from a restart file (n_vars_ben, n_zones), applied
+   !# by re_initialize right after it has reset every zone from cc_hz (K27).
+   AED_REAL,DIMENSION(:,:),ALLOCATABLE :: zone_ben_restart
    LOGICAL :: glm_style_zones = .FALSE.
 
    TYPE(aed_column_t),DIMENSION(:,:),ALLOCATABLE,TARGET :: all_cols !# (n_aed_vars, ncols)
@@ -408,14 +413,21 @@ MODULE aed_api
    AED_REAL,ALLOCATABLE,TARGET :: flux_pel(:,:)        !# (n_vars, MAX(n_layers, aed_n_zones))
    AED_REAL,DIMENSION(:,:),ALLOCATABLE :: flux_pel_pre !# (n_vars+n_vars_ben, MAX(n_layers, aed_n_zones))
    AED_REAL,DIMENSION(:,:),ALLOCATABLE :: flux_pel_z   !# (n_vars+n_vars_ben, MAX(n_layers, aed_n_zones))
-
-   !# flux_pel_ptm holds the particle<->water exchange flux computed once per
-   !# host step by aed_calculate_particles, captured from a clean (zeroed)
-   !# flux_pel immediately after that call. calculate_fluxes unconditionally
-   !# resets/recomputes flux_pel from kinetics alone on every split, so this
-   !# snapshot is re-added back in afterwards (see aed_run_column) - otherwise
-   !# the particle-driven flux would never reach the state-variable update.
-   AED_REAL,DIMENSION(:,:),ALLOCATABLE,SAVE :: flux_pel_ptm
+   !# water-column fluxes from aed_calculate_column, held aside while glm_benthics
+   !# uses flux_pel as zone scratch space (it overwrites every layer)
+   AED_REAL,DIMENSION(:,:),ALLOCATABLE :: flux_pel_col !# (n_vars+n_vars_ben, MAX(n_layers, aed_n_zones))
+   !# Sheet diagnostics written by aed_calculate_surface this sub-step (air-water
+   !# fluxes such as OXY_oxy_atm). With sediment zones the zone copy-back rebuilds
+   !# cc_diag_hz from the zone values, which never contain them; these are put
+   !# back afterwards (known issue K15).
+   AED_REAL,DIMENSION(:),ALLOCATABLE :: srf_diag_hz
+   LOGICAL, DIMENSION(:),ALLOCATABLE :: srf_diag_set
+   !# With split_factor > 1 the per-step (rezero) diagnostics are averaged over the
+   !# sub-steps, so the output holds the step's mean flux, not the last sub-step's
+   !# (known issue K18). rz_d / rz_s flag the rezero layer and sheet diagnostics that are rates (units
+   !# per time, e.g. mmol/m2/d); state-like diagnostics (mmol/m3, -, counts) keep the
+   !# end-of-step value, consistent with the states.
+   LOGICAL, DIMENSION(:),ALLOCATABLE :: rz_d, rz_s
 
    !# flux_pel_rip / flux_hz_rip hold the riparian (wetting-front) fluxes
    !# computed once per host step by aed_calculate_riparian in aed_run_model.
@@ -453,13 +465,56 @@ MODULE aed_api
        AED_REAL,INTENT(inout) :: cc(:)   !# cell concentration
     END SUBROUTINE aed_mobility_fn_t
 
+    !# As aed_mobility_fn_t, also adding to dep the mass (mmol) each layer
+    !# deposited on its bed strip (K19, K20)
+    SUBROUTINE aed_mobility_dep_fn_t(N,dt,h,A,ww,min_C,cc,dep)
+       USE ISO_C_BINDING
+       CINTEGER,INTENT(in)    :: N       !# number of vertical layers
+       AED_REAL,INTENT(in)    :: dt      !# time step (s)
+       AED_REAL,INTENT(in)    :: h(:)    !# layer thickness (m)
+       AED_REAL,INTENT(in)    :: A(:)    !# layer areas (m2)
+       AED_REAL,INTENT(in)    :: ww(:)   !# vertical speed (m/s)
+       AED_REAL,INTENT(in)    :: min_C   !# minimum allowed cell concentration
+       AED_REAL,INTENT(inout) :: cc(:)   !# cell concentration
+       AED_REAL,INTENT(inout) :: dep(:)  !# deposited mass per layer (mmol), added to
+    END SUBROUTINE aed_mobility_dep_fn_t
+
   END INTERFACE
   !-----------------------------------------------------------------------------
 
   PROCEDURE(aed_mobility_fn_t),POINTER :: doMobility => null()
+  PROCEDURE(aed_mobility_dep_fn_t),POINTER :: doMobilityDep => null()
+
+  !# Deposition delivered to the zones' benthic pools (K19, K20): used when the
+  !# host registers aed_set_mobility_dep_fn and api_set_zone_dep_func and zones
+  !# are on. dep_lay(v, lev): mass of water variable v deposited by layer lev
+  !# this step. Routes from aed_define_deposition, in this API's indices.
+  LOGICAL :: dep_set = .FALSE., dep_on = .FALSE.
+  AED_REAL,DIMENSION(:,:),ALLOCATABLE :: dep_lay
+  INTEGER, DIMENSION(:),  ALLOCATABLE :: rt_v, rt_b
+  AED_REAL,DIMENSION(:),  ALLOCATABLE :: rt_s
+  INTEGER :: n_rt = 0
 
 !===============================================================================
 CONTAINS
+
+!###############################################################################
+SUBROUTINE aed_set_zone_ben_restart(nben, nzones, buf)
+!-------------------------------------------------------------------------------
+! Hold per-zone benthic states read from a restart file; re_initialize applies
+! them after its first-step reset of the zones (K27).
+!-------------------------------------------------------------------------------
+!ARGUMENTS
+   INTEGER,INTENT(in)  :: nben, nzones
+   AED_REAL,INTENT(in) :: buf(nben, nzones)
+!-------------------------------------------------------------------------------
+!BEGIN
+   IF ( ALLOCATED(zone_ben_restart) ) DEALLOCATE(zone_ben_restart)
+   ALLOCATE(zone_ben_restart(nben, nzones))
+   zone_ben_restart = buf
+END SUBROUTINE aed_set_zone_ben_restart
+!+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
 
 
 #if 0
@@ -658,6 +713,70 @@ END SUBROUTINE aed_set_mobility_fn
 
 
 !###############################################################################
+SUBROUTINE aed_set_mobility_dep_fn(mobl)
+!-------------------------------------------------------------------------------
+! Optional: a mobility routine that also reports what each layer deposits on
+! its bed strip (K19, K20). Used instead of the plain one when registered.
+!-------------------------------------------------------------------------------
+!ARGUMENTS
+   PROCEDURE(aed_mobility_dep_fn_t),POINTER :: mobl
+!-------------------------------------------------------------------------------
+!BEGIN
+    doMobilityDep => mobl
+END SUBROUTINE aed_set_mobility_dep_fn
+!+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+
+!###############################################################################
+SUBROUTINE setup_deposition()
+!-------------------------------------------------------------------------------
+! Once: decide whether deposition is delivered, and map the modules' deposition
+! routes (AED variable ids) onto this API's water (v) and benthic (b) indices.
+!-------------------------------------------------------------------------------
+!LOCALS
+   INTEGER :: i, v, b, r, src, tgt
+   AED_REAL :: sc
+   INTEGER,DIMENSION(:),ALLOCATABLE :: v_of, b_of
+   TYPE(aed_variable_t),POINTER :: tv
+!-------------------------------------------------------------------------------
+!BEGIN
+   dep_set = .TRUE.
+   dep_on = benthic_mode > 1 .AND. ASSOCIATED(doMobilityDep) .AND. ASSOCIATED(p_deposit_zone) &
+            .AND. aed_n_deposition_routes() > 0
+   IF ( .NOT. dep_on ) RETURN
+
+   ALLOCATE(v_of(n_aed_vars), b_of(n_aed_vars)) ; v_of = 0 ; b_of = 0
+   v = 0 ; b = 0
+   DO i = 1, n_aed_vars
+      IF ( aed_get_var(i, tv) ) THEN
+         IF ( tv%var_type == V_STATE ) THEN
+            IF ( tv%sheet ) THEN
+               b = b + 1 ; b_of(i) = b
+            ELSE
+               v = v + 1 ; v_of(i) = v
+            ENDIF
+         ENDIF
+      ENDIF
+   ENDDO
+   ALLOCATE(rt_v(aed_n_deposition_routes()), rt_b(aed_n_deposition_routes()), rt_s(aed_n_deposition_routes()))
+   n_rt = 0
+   DO r = 1, aed_n_deposition_routes()
+      CALL aed_get_deposition_route(r, src, tgt, sc)
+      IF ( v_of(src) > 0 .AND. b_of(tgt) > 0 ) THEN
+         n_rt = n_rt + 1 ; rt_v(n_rt) = v_of(src) ; rt_b(n_rt) = b_of(tgt) ; rt_s(n_rt) = sc
+      ENDIF
+   ENDDO
+   dep_on = n_rt > 0
+   IF ( dep_on ) THEN
+      ALLOCATE(dep_lay(n_vars, MAX(MaxLayers, 1))) ; dep_lay = zero_
+      CALL aed_set_host_deposition(.TRUE.)
+   ENDIF
+   DEALLOCATE(v_of, b_of)
+END SUBROUTINE setup_deposition
+!+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+
+!###############################################################################
 SUBROUTINE aed_set_coupling(cpl)
 !-------------------------------------------------------------------------------
 ! Routine to set the coupling information provided by the host
@@ -737,6 +856,7 @@ SUBROUTINE aed_set_model_data(dat, ncols, nlevs)
    IF (.NOT.ALLOCATED(flux_pel))     ALLOCATE(flux_pel(    n_vars+n_vars_ben, MAX(MaxLayers, aed_n_zones)))
    IF (.NOT.ALLOCATED(flux_pel_pre)) ALLOCATE(flux_pel_pre(n_vars+n_vars_ben, MAX(MaxLayers, aed_n_zones)))
    IF (.NOT.ALLOCATED(flux_pel_z))   ALLOCATE(flux_pel_z(  n_vars+n_vars_ben, MAX(MaxLayers, aed_n_zones)))
+   IF (.NOT.ALLOCATED(flux_pel_col)) ALLOCATE(flux_pel_col(n_vars+n_vars_ben, MAX(MaxLayers, aed_n_zones)))
 
    !# Should have been done in the env setup
    IF (.NOT. ALLOCATED(data) ) ALLOCATE(data(ncols))
@@ -1301,6 +1421,7 @@ SUBROUTINE define_zone_column(zcolm, zon)
             CASE ( 'col_area' )    ; zcolm(av)%cell_sheet => aedZones(zon)%z_env%z_col_area
             CASE ( 'layer_area' )  ; zcolm(av)%cell => aedZones(:)%z_env%z_area
             CASE ( 'layer_ht' )    ; zcolm(av)%cell => aedZones(:)%z_env%z_dz
+            CASE ( 'layer_vol' )   ; zcolm(av)%cell => aedZones(:)%z_env%z_vol
 
             CASE ( 'temperature' ) ; zcolm(av)%cell => aedZones(:)%z_env%z_temp
             CASE ( 'salinity' )    ; zcolm(av)%cell => aedZones(:)%z_env%z_salt
@@ -1458,33 +1579,15 @@ SUBROUTINE aed_run_model(nCols, nLevs, doSurface)
          !# Pre flux integration tasks
          CALL pre_kinetics(xcol, xdat, col_lev, ibot, itop)
 
-         !# Refresh the local light field before the particle BGC reads it.
-         !# aed_calculate_particles runs once per host step (before aed_run_column)
-         !# and reads idata%par; without this the particles would see last step's
-         !# light. aed_run_column recomputes Light per split for the water column.
-         IF (do_particle_bgc) THEN
-            IF ( .NOT. link_ext_par) &
-               CALL Light(xcol, xdat, col_lev, ibot, itop)
-
-            !# Start from a clean flux_pel: nothing zeroes this array between
-            !# host steps (calculate_fluxes only resets it on entry, which is
-            !# further downstream in aed_run_column below), so without this it
-            !# would still hold the previous step's fully-computed kinetics
-            !# flux and contaminate the particle-only snapshot taken below.
-            flux_pel = zero_
-            CALL aed_calculate_particles(xcol, col_lev, idx_lo, idx_hi, col)
-
-            !# Capture the clean particle<->water exchange flux so it can be
-            !# re-applied after calculate_fluxes (called from aed_run_column,
-            !# below) resets/recomputes flux_pel from kinetics alone.
-            IF ( .NOT. ALLOCATED(flux_pel_ptm) ) &
-               ALLOCATE(flux_pel_ptm(SIZE(flux_pel,1), SIZE(flux_pel,2)))
-            flux_pel_ptm = flux_pel
-         ENDIF
+         !# NOTE: the particle BGC is NOT run here. It is run inside the split
+         !# loop in aed_run_column, once per sub-step, so that each sub-step
+         !# sees the nutrient concentrations left by the previous one instead of
+         !# every particle drawing against the same start-of-step values.
 
          !----------------------------------------------------------------------
          !# Main time-step tasks
-         CALL aed_run_column(xcol, xdat, col_lev, ibot, itop, doSurface)
+         CALL aed_run_column(xcol, xdat, col_lev, ibot, itop, doSurface, &
+                                                     idx_lo, idx_hi, col)
       ENDIF
    ENDDO
 
@@ -1518,7 +1621,34 @@ CONTAINS
 
       DO av=1,n_aed_vars
          !#========================================================#!
-         col_out(av)%cell     => all_cols(av,col_no)%cell
+         !# Rebase %cell so index 1 is this column's BOTTOM layer, because the
+         !# models are handed LOCAL layer indices: calculate_fluxes builds
+         !# layer_map(lev)=lev, and the caller remaps bot/top to 1..col_lev. So
+         !# _STATE_VAR_(id) = cell(layer_idx) must be local-indexed too, as every
+         !# data_out field below already is.
+         !#
+         !# Leaving it unrebased only works when lo_idx==1 - true for GLM, whose
+         !# columns start at the bed, but not for a host whose column sits at an
+         !# offset within a taller grid (ELCOM: bot_idx is the bed's absolute
+         !# level, e.g. 40 of 64). There every model silently read layers below
+         !# the bed - finite-but-wrong for the water-column models, and fatal for
+         !# aed_phyto_abm, which divides by layer_vol and got 0 from a dry cell.
+         !#
+         !# (lo_idx:) rather than (lo_idx:hi_idx): rebasing the origin is the whole
+         !# fix, so leave the upper extent alone rather than also changing what a
+         !# host can see above its current surface. It is then exactly the original
+         !# array when lo_idx==1, i.e. provably a no-op for GLM (verified: the
+         !# 3.5-year paper_sim run is bit-identical).
+         IF ( ASSOCIATED(all_cols(av,col_no)%cell) ) THEN
+            IF ( UBOUND(all_cols(av,col_no)%cell,1) >= lo_idx ) THEN
+               col_out(av)%cell  => all_cols(av,col_no)%cell(lo_idx:)
+            ELSE
+               !# short array (e.g. the tuflow 'par' fudge noted below) - leave as is
+               col_out(av)%cell  => all_cols(av,col_no)%cell
+            ENDIF
+         ENDIF
+         !# flux_pel is a module scratch array already dimensioned per local
+         !# level (see its ALLOCATE), so it must NOT be sliced.
          col_out(av)%flux_pel => all_cols(av,col_no)%flux_pel
          !#========================================================#!
       ENDDO
@@ -1659,6 +1789,8 @@ CONTAINS
          !# Calculate source/sink terms due to the settling or rising of
          !# state variables in the water column (note that settling into benthos
          !# is done in aed_do_benthos)
+         IF ( .NOT. dep_set ) CALL setup_deposition()
+         IF ( dep_on ) dep_lay = zero_
          IF ( ASSOCIATED(doMobility) ) THEN
             v = 0
             DO i=1,n_aed_vars
@@ -1668,8 +1800,13 @@ CONTAINS
                      !# only for state_vars that are not sheet, and also non-zero ws
                      IF ( .NOT. ieee_is_nan(tv%mobility) .AND. SUM(ABS(ws(i,:)))>zero_ ) THEN
                         min_C = tv%minimum
-                        CALL doMobility(nlev, timestep, idata%dz(:), idata%area(:), &
+                        IF ( dep_on ) THEN   !# also record what each layer deposits (K19, K20)
+                           CALL doMobilityDep(nlev, timestep, idata%dz(:), idata%area(:), &
+                                              ws(i,:), min_C, idata%cc(v,:), dep_lay(v,:))
+                        ELSE
+                           CALL doMobility(nlev, timestep, idata%dz(:), idata%area(:), &
                                                           ws(i,:), min_C, idata%cc(v,:))
+                        ENDIF
                      ENDIF
                   ENDIF
                ENDIF
@@ -1687,17 +1824,26 @@ CONTAINS
 
 
    !############################################################################
-   SUBROUTINE aed_run_column(icolm, idata, nlev, bot, top, doSurface)
+   SUBROUTINE aed_run_column(icolm, idata, nlev, bot, top, doSurface, &
+                                                   idx_lo, idx_hi, col_no)
    !----------------------------------------------------------------------------
    !ARGUMENTS
       TYPE(aed_column_t),INTENT(inout)   :: icolm(:)
       TYPE(api_col_data_t),INTENT(inout) :: idata
       INTEGER,INTENT(in) :: nlev, bot, top
       LOGICAL,INTENT(in) :: doSurface
+      !# Host layer index range and column number for this column - needed only
+      !# to run the particle BGC inside the split loop below.
+      INTEGER,INTENT(in) :: idx_lo, idx_hi, col_no
    !
    !LOCALS
-      INTEGER  :: v, lev, zon, split
+      INTEGER  :: v, lev, zon, split, i, d, sd
       AED_REAL :: localext, localext_up
+      TYPE(aed_variable_t),POINTER :: tv
+      AED_REAL,DIMENSION(:,:),ALLOCATABLE :: acc_d, acc_z   !# sub-step sums (K18)
+      AED_REAL,DIMENSION(:),  ALLOCATABLE :: acc_s
+      AED_REAL,DIMENSION(:),  ALLOCATABLE :: zmass          !# deposition per zone (K19, K20)
+      INTEGER :: r
    !
    !----------------------------------------------------------------------------
    !BEGIN
@@ -1705,6 +1851,46 @@ CONTAINS
 
       IF (benthic_mode > 1 .and. ASSOCIATED(p_calc_zone_areas)) &
          CALL p_calc_zone_areas(aedZones, aed_n_zones, idata%area, idata%lheights, nlev)
+
+      !# Deliver this step's deposition to the zones' benthic pools (K19, K20):
+      !# each layer's deposited mass goes to the zones its bed strip lies in,
+      !# with the same shares as the zone areas, so the pools gain what the
+      !# water lost.
+      IF ( dep_on ) THEN
+         ALLOCATE(zmass(aed_n_zones))
+         DO r = 1, n_rt
+            CALL p_deposit_zone(aed_n_zones, dep_lay(rt_v(r), 1:nlev), nlev, zmass)
+            DO zon = 1, aed_n_zones
+               IF ( aedZones(zon)%z_env%z_area > zero_ ) &
+                  aedZones(zon)%z_cc_hz(rt_b(r)) = aedZones(zon)%z_cc_hz(rt_b(r)) + &
+                                         rt_s(r) * zmass(zon) / aedZones(zon)%z_env%z_area
+            ENDDO
+         ENDDO
+         DEALLOCATE(zmass)
+      ENDIF
+
+      IF ( split_factor > 1 ) THEN
+         IF ( .NOT. ALLOCATED(rz_d) ) THEN
+            ALLOCATE(rz_d(n_vars_diag), rz_s(n_vars_diag_sheet))
+            rz_d = .FALSE. ; rz_s = .FALSE. ; d = 0 ; sd = 0
+            DO i = 1, n_aed_vars
+               IF ( aed_get_var(i, tv) ) THEN
+                  IF ( tv%var_type == V_DIAGNOSTIC ) THEN
+                     IF ( tv%sheet ) THEN
+                        sd = sd + 1 ; rz_s(sd) = tv%rezero .AND. is_rate_unit(tv%units)
+                     ELSE
+                        d = d + 1 ; rz_d(d) = tv%rezero .AND. is_rate_unit(tv%units)
+                     ENDIF
+                  ENDIF
+               ENDIF
+            ENDDO
+         ENDIF
+         ALLOCATE(acc_d(SIZE(idata%cc_diag,1), nlev), acc_s(SIZE(idata%cc_diag_hz)))
+         acc_d = zero_ ; acc_s = zero_
+         IF ( benthic_mode > 1 ) THEN
+            ALLOCATE(acc_z(n_vars_diag_sheet, aed_n_zones)) ; acc_z = zero_
+         ENDIF
+      ENDIF
 
       DO split=1,split_factor
          IF (benthic_mode > 1 .and. ASSOCIATED(p_copy_to_zone)) &
@@ -1716,9 +1902,7 @@ CONTAINS
          !# be inline with current aed_phyoplankton, which requires only
          !# surface par, then integrates over depth of a layer
 
-         !CALL update_light(icolm, idata, nlev)
-         IF (.NOT. (do_particle_bgc .OR. link_ext_par) ) &
-            CALL Light(icolm, idata, nlev, bot, top)
+         IF (.NOT. link_ext_par) CALL Light(icolm, idata, nlev, bot, top)
 
          !# non PAR bandwidth fractions (set assuming single light extinction)
          idata%nir(:) = (idata%par(:)/par_fraction) * nir_fraction
@@ -1726,17 +1910,16 @@ CONTAINS
          idata%uvb(:) = (idata%par(:)/par_fraction) * uvb_fraction
 
          !# Time-integrate one biological time step
+         IF ( benthic_mode > 1 ) THEN
+            IF ( .NOT. ALLOCATED(srf_diag_hz) ) &
+               ALLOCATE(srf_diag_hz(SIZE(idata%cc_diag_hz)), srf_diag_set(SIZE(idata%cc_diag_hz)))
+            srf_diag_set = .FALSE.
+         ENDIF
          CALL calculate_fluxes(icolm, idata, nlev, bot, top, doSurface)
 
-         !# calculate_fluxes just reset flux_pel to kinetics/benthic/surface
-         !# exchange only. Re-apply the particle<->water exchange flux
-         !# computed once per host step by aed_calculate_particles (captured
-         !# into flux_pel_ptm in aed_run_model, above) on every split - it
-         !# would otherwise never reach the state-variable update below.
-         IF ( do_particle_bgc ) THEN
-            IF ( ALLOCATED(flux_pel_ptm) ) &
-               flux_pel(1:n_vars,1:nlev) = flux_pel(1:n_vars,1:nlev) + flux_pel_ptm(1:n_vars,1:nlev)
-         ENDIF
+         IF ( do_particle_bgc ) &
+            CALL aed_calculate_particles(icolm, nlev, idx_lo, idx_hi, col_no, &
+                                                        dt_eff/secs_per_day)
 
          !# Likewise re-apply the riparian fluxes held in aed_run_model
          !# (hold_riparian_fluxes). The benthic part is only applied on the
@@ -1763,13 +1946,43 @@ CONTAINS
             !# Distribute cc-sed benthic properties back into main cc array
             CALL p_copy_from_zone(aedZones, aed_n_zones, idata%lheights, idata%cc,  &
                                  idata%cc_hz, idata%cc_diag, idata%cc_diag_hz, nlev)
+            !# Restore the surface (air-water) sheet diagnostics that the zone
+            !# copy-back has just overwritten (K15)
+            WHERE (srf_diag_set) idata%cc_diag_hz = srf_diag_hz
          ELSE
             idata%cc_hz(1:n_vars_ben) = idata%cc_hz(1:n_vars_ben) + &
                                      dt_eff*flux_ben(n_vars+1:n_vars+n_vars_ben)
          ENDIF
 
          CALL check_states(idata, nlev)
+
+         IF ( split_factor > 1 ) THEN   !# accumulate this sub-step's diagnostics (K18)
+            acc_d = acc_d + idata%cc_diag(:, 1:nlev)
+            acc_s = acc_s + idata%cc_diag_hz
+            IF ( benthic_mode > 1 ) THEN
+               DO zon = 1, aed_n_zones
+                  acc_z(:, zon) = acc_z(:, zon) + aedZones(zon)%z_cc_diag_hz(1:n_vars_diag_sheet)
+               ENDDO
+            ENDIF
+         ENDIF
       ENDDO
+
+      IF ( split_factor > 1 ) THEN
+         !# per-step diagnostics: the mean over the sub-steps (K18)
+         DO i = 1, SIZE(rz_d)
+            IF ( rz_d(i) ) idata%cc_diag(i, 1:nlev) = acc_d(i, :) / split_factor
+         ENDDO
+         WHERE (rz_s) idata%cc_diag_hz = acc_s / split_factor
+         IF ( benthic_mode > 1 ) THEN
+            DO zon = 1, aed_n_zones
+               DO i = 1, n_vars_diag_sheet
+                  IF ( rz_s(i) ) aedZones(zon)%z_cc_diag_hz(i) = acc_z(i, zon) / split_factor
+               ENDDO
+            ENDDO
+            DEALLOCATE(acc_z)
+         ENDIF
+         DEALLOCATE(acc_d, acc_s)
+      ENDIF
 
       CALL BioExtinction(icolm, nlev, bot, top, idata%bioextc(:))
       IF (.NOT. link_ext_par) THEN
@@ -1777,7 +1990,15 @@ CONTAINS
          ! glm_aed.F90 update_light writes extc(i) only for i = nlev-1 down to 1,
          ! skipping the surface layer. Matching that here prevents over-attenuation
          ! of shortwave in GLM's thermodynamics at the surface layer.
-         idata%extc(bot:top-1) = idata%bioextc(bot:top-1) + Kw
+         ! idata%extc is the host's ExtcCoefSW, used next by the host to heat the
+         ! water: it carries the biotic extinction only with bioshade_feedback,
+         ! otherwise Kw alone (Light gives AED the full extinction for its own
+         ! light at the start of each step).
+         IF (bioshade_feedback) THEN
+            idata%extc(bot:top-1) = idata%bioextc(bot:top-1) + Kw
+         ELSE
+            idata%extc(bot:top-1) = Kw
+         ENDIF
       ENDIF
       IF (.NOT. bioshade_feedback) THEN
          ! Disble the extinction coefficient feedback to the host
@@ -1879,6 +2100,13 @@ CONTAINS
 
                CALL aed_initialize_benthic(column_sed, zon)
             ENDDO
+            !# On a restart, every zone gets back its own benthic states (K27)
+            IF ( ALLOCATED(zone_ben_restart) ) THEN
+               DO zon=1,MIN(aed_n_zones, SIZE(zone_ben_restart, 2))
+                  aedZones(zon)%z_cc_hz(1:n_vars_ben) = zone_ben_restart(1:n_vars_ben, zon)
+               ENDDO
+               DEALLOCATE(zone_ben_restart)
+            ENDIF
          ENDIF
       ELSE
          !# assumes only GLM does the odd zoning stuff
@@ -1905,9 +2133,8 @@ CONTAINS
    !
    !LOCALS
       INTEGER  :: lev,zon,v,av,sv,sd
-      AED_REAL :: scale, cumu_area
+      AED_REAL :: scale, lo, hi, zlo, zhi, alo, ahi, acum, a1, a2
       AED_REAL :: localrainl, localshade, localdrag
-      LOGICAL  :: splitZone
       TYPE(aed_variable_t),POINTER :: tvar
       TYPE(aed_column_t),DIMENSION(:),POINTER :: column_sed    !# (n_aed_vars)
       INTEGER :: layer_map(nlev), zlev
@@ -1930,7 +2157,7 @@ CONTAINS
          !# Skip -ve values, as GEO_ubalchg is -ve and doesnt not comply with this logic
          DO v=1,n_vars
             IF ( idata%cc(v, bot) >= 0.0 ) &
-               flux_pel(v, bot) = max(-1.0 * idata%cc(v, bot), flux_pel(v, bot)/idata%dz(bot))
+               flux_pel(v, bot) = max(-1.0 * idata%cc(v, bot)/dt_eff, flux_pel(v, bot)/idata%dz(bot))
          END DO
       !# --------------------------------------
       CASE ( 1 )
@@ -1948,7 +2175,7 @@ CONTAINS
          !# Skip -ve values, as GEO_ubalchg is -ve and doesnt not comply with this logic
          DO v=1,n_vars
             IF ( idata%cc(v, bot) >= 0.0 ) &
-               flux_pel(v, bot) = max(-1.0 * idata%cc(v, bot), flux_pel(v, bot)/idata%dz(bot))
+               flux_pel(v, bot) = max(-1.0 * idata%cc(v, bot)/dt_eff, flux_pel(v, bot)/idata%dz(bot))
          END DO
 
 !$OMP DO
@@ -1962,7 +2189,7 @@ CONTAINS
             !# scaled to proportion of area that is "bottom"
             DO v=1,n_vars
                IF ( idata%cc(v, lev) >= 0.0 ) flux_pel(v, lev) = &
-                                max(-1.0 * idata%cc(v, lev), flux_pel(v, lev)/idata%dz(lev))
+                                max(-1.0 * idata%cc(v, lev)/dt_eff, flux_pel(v, lev)/idata%dz(lev))
             END DO
             flux_pel(:, lev) = flux_pel(:, lev) * (idata%area(lev)-idata%area(lev-1))/idata%area(lev)
          ENDDO
@@ -2060,49 +2287,67 @@ CONTAINS
          ENDDO
 !$OMP END DO
 
-         !# Disaggregation of zone induced fluxes to overlying layers
-         zon = aed_n_zones
-         DO lev=nlev,1,-1
-            IF ( zon > 1 ) THEN
-               IF (lev > 1) THEN
-                  splitZone = idata%lheights(lev-1) < aedZones(zon-1)%z_env%z_height
-               ELSE
-                  splitZone = 0.0 < aedZones(zon-1)%z_env%z_height
+         !# Disaggregation of zone induced fluxes to overlying layers: each layer
+         !# takes each zone's flux (per m2 of bed) weighted by the share of its
+         !# bed lying in that zone, the same shares the host uses for the zone
+         !# areas, so the mass delivered equals sum(zone flux * zone area).
+         !# The bed between two heights is the difference of the plan areas
+         !# there: the layer's own (cumulative) areas at its bottom and top, and
+         !# the host-supplied z_top_area where a zone boundary cuts the layer.
+         !# If the host gives no z_top_area (-1), or the layer has no bed, the
+         !# layer is shared by height instead. The bottom zone extends down to
+         !# the bed and the top zone upward.
+         acum = zero_
+         DO lev=1,nlev
+            lo = zero_ ; IF (lev > 1) lo = idata%lheights(lev-1)
+            hi = idata%lheights(lev)
+            alo = acum ; ahi = acum + idata%area(lev) ; acum = ahi
+            flux_pel(1:n_vars,lev) = zero_
+            DO zon=1,aed_n_zones
+               IF ( ASSOCIATED(aedZones(zon)%z_share) ) THEN
+                  !# the host's shares for this step (the same ones it used for
+                  !# the zone areas and the zone views)
+                  scale = aedZones(zon)%z_share(lev)
+                  IF ( scale > zero_ ) flux_pel(1:n_vars,lev) = flux_pel(1:n_vars,lev) + &
+                                                          flux_pel_z(1:n_vars,zon) * scale
+                  CYCLE
                ENDIF
-            ELSE
-               splitZone = .FALSE.
-            ENDIF
-
-            IF (splitZone) THEN
-               IF (lev > 1) THEN
-                  scale = (aedZones(zon-1)%z_env%z_height - idata%lheights(lev-1)) / &
-                                              (idata%lheights(lev) - idata%lheights(lev-1))
+               !# host gave no shares: compute them here
+               zlo = -1.0e30 ; IF (zon > 1) zlo = aedZones(zon-1)%z_env%z_height
+               zhi =  1.0e30 ; IF (zon < aed_n_zones) zhi = aedZones(zon)%z_env%z_height
+               IF ( hi <= lo ) THEN
+                  scale = zero_ ; IF ( hi > zlo .AND. hi <= zhi ) scale = one_
+               ELSEIF ( hi <= zlo .OR. lo >= zhi ) THEN
+                  scale = zero_
                ELSE
-                  scale = (aedZones(zon-1)%z_env%z_height - 0.0) / (idata%lheights(lev) - 0.0)
+                  scale = MAX(zero_, MIN(hi, zhi) - MAX(lo, zlo)) / (hi - lo)
+                  IF ( ahi > alo ) THEN
+                     a1 = alo ; IF ( lo < zlo ) a1 = aedZones(zon-1)%z_env%z_top_area
+                     a2 = ahi ; IF ( hi > zhi ) a2 = aedZones(zon)%z_env%z_top_area
+                     IF ( (lo >= zlo .OR. aedZones(MAX(zon-1,1))%z_env%z_top_area >= zero_) .AND. &
+                          (hi <= zhi .OR. aedZones(zon)%z_env%z_top_area >= zero_) )             &
+                        scale = MIN(one_, MAX(zero_, (a2 - a1) / (ahi - alo)))
+                  ENDIF
                ENDIF
-               flux_pel(1:n_vars,lev) = flux_pel_z(1:n_vars,zon) * scale
-
-               zon = zon - 1
-
-               flux_pel(1:n_vars,lev) = flux_pel(1:n_vars,lev) + &
-                                        flux_pel_z(1:n_vars,zon) * (1.0 - scale)
-            ELSE
-               flux_pel(1:n_vars,lev) = flux_pel_z(1:n_vars,zon)
-            ENDIF
+               IF ( scale > zero_ ) flux_pel(1:n_vars,lev) = flux_pel(1:n_vars,lev) + &
+                                                       flux_pel_z(1:n_vars,zon) * scale
+            ENDDO
          ENDDO
          !# Limit flux out of bottom waters to concentration of that layer
-         !# i.e. don't flux out more than is there & distribute
-         !# bottom flux into pelagic over bottom box (i.e., divide by layer height).
-         !# scaled to proportion of layer area that is "bottom"
-         !# idata%area is incremental; accumulate running sum to get cumulative area,
-         !# matching glm_aed.F90 which uses cumulative area(lev) directly.
-         cumu_area = zero_
+         !# i.e. don't flux out more than is there & distribute the
+         !# bottom flux (per m2 of sediment) into the layer it sits under.
+         !# idata%area is incremental, i.e. the sediment area exposed in this
+         !# layer, so mass/s = flux * area(lev), and the concentration rate is
+         !# that over the TRUE layer volume. Dividing by cumulative area * dz
+         !# instead over-counts the volume of a basin that narrows downward,
+         !# and lost ~15% of every sediment flux in the BARC hypsograph.
          DO lev=1,nlev
-            cumu_area = cumu_area + idata%area(lev)
-            IF (lev > 1) flux_pel(:, lev) = flux_pel(:, lev) * idata%area(lev)/cumu_area
+            flux_pel(:, lev) = flux_pel(:, lev) * idata%area(lev)
             DO v=1,n_vars
-              IF ( idata%cc(v, 1) .GE. 0.0 ) flux_pel(v, lev) = &
-                             max(-1.0 * idata%cc(v, lev), flux_pel(v, lev)/idata%dz(lev))
+              !# cap: a sink may not remove more than the layer holds within one
+              !# step (-cc/dt_eff, a rate like the flux); test this layer's own sign
+              IF ( idata%cc(v, lev) .GE. 0.0 ) flux_pel(v, lev) = &
+                             max(-1.0 * idata%cc(v, lev)/dt_eff, flux_pel(v, lev)/idata%vol(lev))
             END DO
          ENDDO
       CASE DEFAULT
@@ -2130,9 +2375,9 @@ CONTAINS
    !----------------------------------------------------------------------------
    !BEGIN
       !# flux_pel is reset and rebuilt from kinetics/benthic/surface exchange
-      !# alone here; any particle<->water exchange flux captured earlier this
-      !# host step (flux_pel_ptm, see aed_run_model) is re-applied afterwards
-      !# in aed_run_column, once this subroutine returns.
+      !# alone here. The particle<->water exchange is added on top by
+      !# aed_calculate_particles, which aed_run_column calls immediately after
+      !# this routine returns, within the same sub-step.
       flux_pel = zero_
       flux_atm = zero_
       flux_ben = zero_
@@ -2157,7 +2402,14 @@ CONTAINS
             layer_map(lev) = 1 + nlev - lev   ! top-to-bottom, matching GLM convention
          ENDDO
          CALL aed_calculate_column(icolm, layer_map)
+
+         !# glm_benthics uses flux_pel as zone scratch and then assigns every
+         !# layer, which would discard the fluxes aed_calculate_column just added
+         !# (e.g. macrophyte epiphyte exchange). Hold them aside and add back.
+         flux_pel_col = flux_pel
+         flux_pel = zero_
          CALL glm_benthics(icolm, idata, nlev, bot)
+         flux_pel = flux_pel + flux_pel_col
       ELSE
          !# COLUMN
          !# Now update any column diagnostics (e.g., used for light)
@@ -2183,10 +2435,28 @@ CONTAINS
       !# SURFACE FLUXES
       !# Calculate temporal derivatives due to air-water exchange.
       IF (doSurface) THEN !# no surface exchange under ice cover
+         IF ( benthic_mode > 1 .AND. ALLOCATED(srf_diag_hz) ) srf_diag_hz = idata%cc_diag_hz
          CALL aed_calculate_surface(icolm, top)
+         IF ( benthic_mode > 1 .AND. ALLOCATED(srf_diag_hz) ) THEN
+            !# remember the sheet diagnostics the surface routine wrote (K15)
+            srf_diag_set = ( idata%cc_diag_hz /= srf_diag_hz )
+            srf_diag_hz  = idata%cc_diag_hz
+         ENDIF
 
-         !# Distribute the fluxes into pelagic surface layer
-         flux_pel(:, top) = flux_pel(:, top) + flux_atm(:)/idata%dz(top)
+         !# Distribute the fluxes (per m2 of water surface) into the pelagic
+         !# surface layer. GLM layers narrow downward, so the top layer's volume
+         !# is less than surface area * dz: deliver flux * surface area into the
+         !# TRUE layer volume.
+         !# In GLM, idata%area(lev) is the lakebed ring between a layer's bottom
+         !# and top (area_top(lev) - area_top(lev-1)), so summing it over the
+         !# column telescopes to area_top(surface layer) = the lake surface area.
+         !# ELCOM cells are prisms, where vol/dz is the surface area, so the
+         !# original form is exact there.
+         IF ( glm_style_zones ) THEN
+            flux_pel(:, top) = flux_pel(:, top) + flux_atm(:)*SUM(idata%area(1:nlev))/idata%vol(top)
+         ELSE
+            flux_pel(:, top) = flux_pel(:, top) + flux_atm(:)/idata%dz(top)
+         ENDIF
       ENDIF
 
       if (bot > top)dir = -1
@@ -2501,6 +2771,32 @@ INTEGER FUNCTION aed_var_index(name)
    ENDDO
    aed_var_index = -1
 END FUNCTION aed_var_index
+!+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+
+!###############################################################################
+LOGICAL FUNCTION is_rate_unit(units)
+!-------------------------------------------------------------------------------
+! True if a diagnostic's units are per time (a rate or flux, e.g. mmol/m2/d,
+! mmol N/m3/day, mg C m-3 d-1, umol/m2/s). Used to average such diagnostics over
+! AED sub-steps (known issue K18); other diagnostics keep their end-of-step value.
+!-------------------------------------------------------------------------------
+!ARGUMENTS
+   CHARACTER(len=*),INTENT(in) :: units
+!LOCALS
+   CHARACTER(len=LEN(units)) :: u
+   INTEGER :: i, c
+!-------------------------------------------------------------------------------
+!BEGIN
+   u = units
+   DO i = 1, LEN(u)   !# lower case
+      c = ICHAR(u(i:i))
+      IF ( c >= ICHAR('A') .AND. c <= ICHAR('Z') ) u(i:i) = CHAR(c + 32)
+   ENDDO
+   is_rate_unit = INDEX(u, '/d') > 0 .OR. INDEX(u, 'd-1') > 0 .OR. &
+                  INDEX(u, '/s') > 0 .OR. INDEX(u, 's-1') > 0 .OR. &
+                  INDEX(u, '/h') > 0 .OR. INDEX(u, '/yr') > 0
+END FUNCTION is_rate_unit
 !+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 
 END MODULE aed_api
