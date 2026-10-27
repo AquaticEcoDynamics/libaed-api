@@ -1539,7 +1539,18 @@ CONTAINS
 
       DO av=1,n_aed_vars
          !#========================================================#!
+         !# The modules index the column from 1 (lo_idx), like the data
+         !# above: slice the full host arrays to the water column. Hosts
+         !# whose water column starts at array layer 1 (TUFLOW-FV, GLM) are
+         !# unchanged; in ELCOM (layers counted from the grid bottom) a
+         !# column above layer 1 was read and written at the wrong layers.
+         !# The flux arrays are already local to the column.
          col_out(av)%cell     => all_cols(av,col_no)%cell
+         IF ( lo_idx > 1 .AND. ASSOCIATED(all_cols(av,col_no)%cell) ) THEN
+            IF ( LBOUND(all_cols(av,col_no)%cell, 1) == 1 .AND. &
+                 UBOUND(all_cols(av,col_no)%cell, 1) >= hi_idx ) &
+               col_out(av)%cell => all_cols(av,col_no)%cell(lo_idx:hi_idx)
+         ENDIF
          col_out(av)%flux_pel => all_cols(av,col_no)%flux_pel
          !#========================================================#!
       ENDDO
