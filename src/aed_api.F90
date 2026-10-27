@@ -39,6 +39,7 @@ MODULE aed_api
 
    USE aed_util
    USE aed_common
+   USE aed_core, ONLY : host_has_cell_vel
    USE aed_zones
    USE aed_ptm, ONLY : Particles, aed_calculate_particles, aed_split_particles, set_ptm_aed_var_num
 
@@ -81,6 +82,9 @@ MODULE aed_api
       LOGICAL  :: ice                = .FALSE.
       LOGICAL  :: do_particle_bgc    = .FALSE.
       LOGICAL  :: glm_style_zones    = .FALSE.
+      LOGICAL  :: have_cell_vel      = .FALSE.  !# the host fills cvel (cell_vel); modules
+                                                !# look for it when they are defined, so this
+                                                !# must be set before aed_configure_models
 
       INTEGER  :: split_factor = 1
       INTEGER  :: benthic_mode = 1
@@ -683,6 +687,7 @@ SUBROUTINE aed_set_coupling(cpl)
    link_solar_shade = cpl%link_solar_shade
    link_bottom_drag = cpl%link_bottom_drag
    link_bio_drag = cpl%link_bio_drag
+   host_has_cell_vel = cpl%have_cell_vel
    do_particle_bgc = cpl%do_particle_bgc
    link_ext_par = cpl%link_ext_par
 
@@ -974,6 +979,10 @@ SUBROUTINE aed_set_model_env(env, ncols, nlevs)
    IF (BSSOCIATED(temp))           tv=aed_provide_global      ('temperature',   'temperature',           'celsius' )
    IF (BSSOCIATED(salt))           tv=aed_provide_global      ('salinity',      'salinity',              'g/kg'    )
    IF (BSSOCIATED(cvel))           tv=aed_provide_global      ('cell_vel',      'cell velocity',         'm/s'     )
+   IF ( host_has_cell_vel .AND. .NOT. BSSOCIATED(cvel) ) &
+      STOP "     ERROR: coupling have_cell_vel is set but the host did not provide cvel"
+   IF ( BSSOCIATED(cvel) .AND. .NOT. host_has_cell_vel ) &
+      print *,"     NOTE: the host provides cvel but not have_cell_vel: modules use their fallback velocity"
    IF (BSSOCIATED(pres))           tv=aed_provide_global      ('pressure',      'pressure',              ''        )
    IF (BSSOCIATED(rho))            tv=aed_provide_global      ('density',       'density',               'kg/m3'   )
    IF (BSSOCIATED(rad))            tv=aed_provide_global      ('rad',           'radiation',             'W/m2'    )
@@ -2179,8 +2188,16 @@ CONTAINS
          !# COLUMN
          !# Now update any column diagnostics (e.g., used for light)
          !# glm_benthics does this differently
+         !# layer_map(1) is the top layer for every host (calculate_column users,
+         !# e.g. aed_macrophyte, rely on it): the local column runs top-first in
+         !# hosts that number from the surface (top = 1) and bed-first in those
+         !# that number from the bed (bot = 1, eg ELCOM, SCHISM)
          DO lev=1, nlev
-            layer_map(lev) = lev
+            IF ( bot >= top ) THEN
+               layer_map(lev) = top + (lev-1)
+            ELSE
+               layer_map(lev) = top - (lev-1)
+            ENDIF
          ENDDO
          CALL aed_calculate_column(icolm, layer_map)
 
