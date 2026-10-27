@@ -84,6 +84,9 @@ MODULE aed_api
 
       INTEGER  :: split_factor = 1
       INTEGER  :: benthic_mode = 1
+      INTEGER  :: link_bio_drag = 0   !# canopy drag to the host: 0 none, 1 column
+                                      !# sum (biodrag_bulk), 2 per layer (biodrag
+                                      !# and biodrag_bulk)
 
       AED_REAL,POINTER :: rain_factor => null()
       AED_REAL,POINTER :: sw_factor   => null()
@@ -193,7 +196,8 @@ MODULE aed_api
       INTEGER, POINTER              :: nearest_active => null()
 
       !# arrays for AED to feedback to hosts environment
-      AED_REAL,DIMENSION(:),POINTER :: biodrag        => null()
+      AED_REAL,DIMENSION(:),POINTER :: biodrag        => null()  ! K, canopy drag per unit volume (/m), by layer
+      AED_REAL,POINTER              :: biodrag_bulk   => null()  ! sum of K dz over the column (-)
       AED_REAL,DIMENSION(:),POINTER :: bioextc        => null()
       AED_REAL,POINTER              :: solarshade     => null()
       AED_REAL,POINTER              :: windshade      => null()
@@ -287,6 +291,7 @@ MODULE aed_api
 
       !# Arrays storing/pointing information for feedback to host
       AED_REAL,DIMENSION(:),POINTER   :: biodrag        => null()
+      AED_REAL,POINTER                :: biodrag_bulk   => null()
       AED_REAL,DIMENSION(:),POINTER   :: bioextc        => null()
       AED_REAL,POINTER                :: solarshade     => null()
       AED_REAL,POINTER                :: windshade      => null()
@@ -326,6 +331,7 @@ MODULE aed_api
    AED_REAL :: uvb_fraction =  0.002  ! 0.005
 
    INTEGER :: benthic_mode = 1
+   INTEGER :: link_bio_drag = 0
 
    INTEGER :: split_factor = 1
    LOGICAL :: mobility_off = .FALSE.
@@ -366,6 +372,7 @@ MODULE aed_api
    AED_REAL,DIMENSION(:),  POINTER :: bathy      => null()
 
    AED_REAL,DIMENSION(:,:),POINTER :: biodrag    => null()
+   AED_REAL,DIMENSION(:),  POINTER :: biodrag_bulk => null()
    AED_REAL,DIMENSION(:,:),POINTER :: bioextc    => null()
    AED_REAL,DIMENSION(:),  POINTER :: solarshade => null()
    AED_REAL,DIMENSION(:),  POINTER :: windshade  => null()
@@ -675,6 +682,7 @@ SUBROUTINE aed_set_coupling(cpl)
    link_rain_loss = cpl%link_rain_loss
    link_solar_shade = cpl%link_solar_shade
    link_bottom_drag = cpl%link_bottom_drag
+   link_bio_drag = cpl%link_bio_drag
    do_particle_bgc = cpl%do_particle_bgc
    link_ext_par = cpl%link_ext_par
 
@@ -805,7 +813,7 @@ SUBROUTINE aed_set_model_env(env, ncols, nlevs)
 !
 !LOCALS
    INTEGER :: tv, col, status = 0
-   LOGICAL :: no_biodg = .FALSE., no_bioex = .FALSE.
+   LOGICAL :: no_biodg = .FALSE., no_biodb = .FALSE., no_bioex = .FALSE.
    LOGICAL :: no_sshad = .FALSE., no_wshad = .FALSE.
    LOGICAL :: no_rianl = .FALSE., no_bathy = .FALSE.
 !
@@ -832,6 +840,7 @@ SUBROUTINE aed_set_model_env(env, ncols, nlevs)
    !  and allocate locally
    no_bathy = (.NOT.ASSOCIATED(env(1)%bathy))
    no_biodg = (.NOT.ASSOCIATED(env(1)%biodrag))
+   no_biodb = (.NOT.ASSOCIATED(env(1)%biodrag_bulk))
    no_bioex = (.NOT.ASSOCIATED(env(1)%bioextc))
    no_sshad = (.NOT.ASSOCIATED(env(1)%solarshade))
    no_wshad = (.NOT.ASSOCIATED(env(1)%windshade))
@@ -839,6 +848,7 @@ SUBROUTINE aed_set_model_env(env, ncols, nlevs)
 
    IF (no_bathy) THEN ; ALLOCATE(bathy(ncols))             ; bathy = zero_      ; ENDIF
    IF (no_biodg) THEN ; ALLOCATE(biodrag(MaxLayers,ncols)) ; biodrag = zero_    ; ENDIF
+   IF (no_biodb) THEN ; ALLOCATE(biodrag_bulk(ncols))      ; biodrag_bulk = zero_ ; ENDIF
    IF (no_bioex) THEN ; ALLOCATE(bioextc(MaxLayers,ncols)) ; bioextc = zero_    ; ENDIF
    IF (no_sshad) THEN ; ALLOCATE(solarshade(ncols))        ; solarshade = zero_ ; ENDIF
    IF (no_wshad) THEN ; ALLOCATE(windshade(ncols))         ; windshade = zero_  ; ENDIF
@@ -924,6 +934,8 @@ SUBROUTINE aed_set_model_env(env, ncols, nlevs)
 
       IF (no_biodg) THEN ; data(col)%biodrag    => biodrag(:,col)
       ELSE ;               data(col)%biodrag    => env(col)%biodrag    ; ENDIF
+      IF (no_biodb) THEN ; data(col)%biodrag_bulk => biodrag_bulk(col)
+      ELSE ;               data(col)%biodrag_bulk => env(col)%biodrag_bulk ; ENDIF
       IF (no_bioex) THEN ; data(col)%bioextc    => bioextc(:,col)
       ELSE ;               data(col)%bioextc    => env(col)%bioextc    ; ENDIF
       IF (no_sshad) THEN ; data(col)%solarshade => solarshade(col)
@@ -1569,6 +1581,7 @@ CONTAINS
       data_out%sed_zones => data(col_no)%sed_zones(lo_idx:hi_idx)
 
       data_out%biodrag   => data(col_no)%biodrag(lo_idx:hi_idx)
+      data_out%biodrag_bulk => data(col_no)%biodrag_bulk
       data_out%bioextc   => data(col_no)%bioextc(lo_idx:hi_idx)
       !#===========================================================#!
 
@@ -1772,6 +1785,7 @@ CONTAINS
       ENDDO
 
       CALL BioExtinction(icolm, nlev, bot, top, idata%bioextc(:))
+      CALL BioDrag(icolm, idata, nlev, bot, top)
       IF (.NOT. link_ext_par) THEN
          ! Update extinction for all layers except the surface (top).
          ! glm_aed.F90 update_light writes extc(i) only for i = nlev-1 down to 1,
@@ -2037,9 +2051,12 @@ CONTAINS
                IF (link_solar_shade) sw_factor = localshade
 
                !# now the bgc updates are complete, update links to host model
+               !# (legacy channel: the bottom layer's K only, as one value; the
+               !#  canopy drag by layer and its column sum go out through
+               !#  biodrag / biodrag_bulk, see link_bio_drag)
                IF (aedZones(zon)%z_env%z_pc_wet > 0.99 ) THEN
                   CALL aed_bio_drag(icolm, bot, localdrag)
-                  IF (link_bottom_drag) friction = localdrag
+                  IF (link_bottom_drag .AND. ASSOCIATED(friction)) friction = localdrag
                ENDIF
             ENDIF
 
@@ -2431,29 +2448,45 @@ CONTAINS
 
 
    !############################################################################
-   SUBROUTINE BioDrag(icolm, nlev, bdrag)
+   SUBROUTINE BioDrag(icolm, idata, nlev, bot, top)
    !----------------------------------------------------------------------------
    !
-   ! Calculate the drag addition to be returned to the host model due to vegetation
+   ! The canopy drag returned to the host (link_bio_drag), summed over the AED
+   ! modules (aed_bio_drag), as set at the end of this host step:
+   !  biodrag(k)   : K, drag coefficient per unit volume (/m), by layer; the
+   !                 host applies -K |u| u in layer k with its layer velocity
+   !                 (link_bio_drag 2)
+   !  biodrag_bulk : sum of K dz over the column (-), for a host applying the
+   !                 drag as a bed-like stress with its depth-mean velocity
+   !                 (link_bio_drag 1, 2)
+   ! Both are zero with link_bio_drag 0.
    !
    !----------------------------------------------------------------------------
    !ARGUMENTS
-      TYPE (aed_column_t), INTENT(inout) :: icolm(:)
-      INTEGER,  INTENT(in)    :: nlev
-      AED_REAL, INTENT(inout) :: bdrag
+      TYPE (aed_column_t),  INTENT(inout) :: icolm(:)
+      TYPE(api_col_data_t), INTENT(inout) :: idata
+      INTEGER,  INTENT(in) :: nlev, bot, top
    !
    !LOCAL VARIABLES:
-      INTEGER :: i
-      AED_REAL :: localdrag
+      INTEGER :: i, dir
+      AED_REAL :: localdrag, bulk
    !
    !----------------------------------------------------------------------------
    !BEGIN
-      bdrag = zero_
-      localdrag = zero_
+      idata%biodrag(:) = zero_
+      idata%biodrag_bulk = zero_
+      IF (link_bio_drag <= 0 .OR. nlev < 1) RETURN
 
-      CALL aed_bio_drag(icolm, nlev, localdrag)
-
-      IF (link_bottom_drag) bdrag = localdrag
+      dir = -1 ; IF (bot > top) dir = 1
+      bulk = zero_
+      DO i = top, bot, dir
+         localdrag = zero_
+         CALL aed_bio_drag(icolm, i, localdrag)
+         localdrag = MAX(localdrag, zero_)
+         bulk = bulk + localdrag * idata%dz(i)
+         IF (link_bio_drag >= 2) idata%biodrag(i) = localdrag
+      ENDDO
+      idata%biodrag_bulk = bulk
    END SUBROUTINE BioDrag
    !++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 
