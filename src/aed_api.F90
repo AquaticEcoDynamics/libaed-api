@@ -2499,7 +2499,8 @@ CONTAINS
       DO i = top, bot, dir
          localdrag = zero_
          CALL aed_bio_drag(icolm, i, localdrag)
-         localdrag = MAX(localdrag, zero_)
+         !# a negative or non-finite value (NaN fails every comparison) gives no drag
+         IF ( .NOT. (localdrag >= zero_ .AND. localdrag < HUGE(localdrag)) ) localdrag = zero_
          bulk = bulk + localdrag * idata%dz(i)
          IF (link_bio_drag >= 2) idata%biodrag(i) = localdrag
       ENDDO
