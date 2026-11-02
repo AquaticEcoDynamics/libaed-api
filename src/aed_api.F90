@@ -196,8 +196,8 @@ MODULE aed_api
       AED_REAL,POINTER              :: datum          => null()
       AED_REAL,POINTER              :: col_height     => null()
 
-      AED_REAL,POINTER              :: nearest_height => null()
-      INTEGER, POINTER              :: nearest_active => null()
+      AED_REAL,POINTER              :: nearest_height => null()  !# water level of nearest_active (m)
+      AED_REAL,POINTER              :: nearest_active => null()  !# nearest wet column downhill (host routing table)
 
       !# arrays for AED to feedback to hosts environment
       AED_REAL,DIMENSION(:),POINTER :: biodrag        => null()  ! K, canopy drag per unit volume (/m), by layer
@@ -291,7 +291,7 @@ MODULE aed_api
       AED_REAL,POINTER                :: col_height     => null()
 
       AED_REAL,POINTER                :: nearest_height => null()
-      INTEGER, POINTER                :: nearest_active => null()
+      AED_REAL,POINTER                :: nearest_active => null()
 
       !# Arrays storing/pointing information for feedback to host
       AED_REAL,DIMENSION(:),POINTER   :: biodrag        => null()
@@ -361,10 +361,8 @@ MODULE aed_api
    !# Arrays for environmental variables (used if they are not supplied externally)
    AED_REAL,DIMENSION(:,:),ALLOCATABLE,TARGET :: lpar
 
-!# these two may be tuflow specific - dont seem to be used anywhere
-   !# Maps to nearest cell with water (for riparian exchange)
-   AED_REAL,DIMENSION(:),POINTER :: nearest_active => null()
-   AED_REAL,DIMENSION(:),POINTER :: nearest_depth => null()
+!# nearest_active / nearest_depth (nearest wet column downhill, for riparian exchange) are per-column
+   !# host pointers (env%nearest_active, env%nearest_height); see route_dry_fluxes.
 
    !# Arrays for work, vertical movement (ws), and cross-boundary fluxes
    AED_REAL,DIMENSION(:,:),ALLOCATABLE,TARGET :: ws   !# (n_vars, n_layers)
@@ -388,8 +386,6 @@ MODULE aed_api
 !  TYPE(partgroup_cell),DIMENSION(:),ALLOCATABLE :: all_particles => null()
 
    !# Misc variables/options
-   LOGICAL :: request_nearest = .FALSE.
-   LOGICAL :: have_nearest = .FALSE.
 
    !#------------------------------------------------------------
    !#   internal variables
@@ -1010,8 +1006,8 @@ SUBROUTINE aed_set_model_env(env, ncols, nlevs)
    IF (BSSOCIATED(mat_id))         tv=aed_provide_sheet_global('material',      'material',              '-'       )
 
                                    tv=aed_provide_sheet_global('bathy',         'bathy',           'm above datum' )
-   IF (ASSOCIATED(nearest_active)) tv=aed_provide_sheet_global('nearest_active','nearest active',        '-'       )
-   IF (ASSOCIATED(nearest_depth))  tv=aed_provide_sheet_global('nearest_depth', 'nearest depth',         'm'       )
+   IF (BSSOCIATED(nearest_active)) tv=aed_provide_sheet_global('nearest_active','nearest active',        '-'       )
+   IF (BSSOCIATED(nearest_height)) tv=aed_provide_sheet_global('nearest_depth', 'nearest depth',         'm'       )
 
                                    tv=aed_provide_global      ('biodrag',       'biodrag',               ''        )
                                    tv=aed_provide_global      ('bioextc',       'bioextc',               ''        )
@@ -1118,8 +1114,8 @@ SUBROUTINE aed_check_model_setup
             CASE ( 'material' )    ; tvar%found = BSSOCIATED(mat_id)
 
             CASE ( 'bathy' )       ; tvar%found = BSSOCIATED(bathy)
-            CASE ( 'nearest_depth' )  ; tvar%found = have_nearest ; request_nearest = have_nearest
-            CASE ( 'nearest_active' ) ; tvar%found = have_nearest ; request_nearest = have_nearest
+            CASE ( 'nearest_depth' )  ; tvar%found = BSSOCIATED(nearest_height)
+            CASE ( 'nearest_active' ) ; tvar%found = BSSOCIATED(nearest_active)
 
             CASE ( 'biodrag' )     ; tvar%found = BSSOCIATED(biodrag)
             CASE ( 'bioextc' )     ; tvar%found = BSSOCIATED(bioextc)
@@ -1237,8 +1233,8 @@ SUBROUTINE define_column(icolm, col)
             CASE ( 'material' )    ; icolm(av)%cell_sheet => data(col)%mat_id
 
             CASE ( 'bathy' )       ; icolm(av)%cell_sheet => data(col)%bathy
-            CASE ( 'nearest_active' ) ; icolm(av)%cell_sheet => nearest_active(col)
-            CASE ( 'nearest_depth' )  ; icolm(av)%cell_sheet => nearest_depth(col)
+            CASE ( 'nearest_active' ) ; icolm(av)%cell_sheet => data(col)%nearest_active
+            CASE ( 'nearest_depth' )  ; icolm(av)%cell_sheet => data(col)%nearest_height
 
             CASE ( 'biodrag' )     ; icolm(av)%cell => data(col)%biodrag
             CASE ( 'bioextc' )     ; icolm(av)%cell => data(col)%bioextc
@@ -1472,6 +1468,10 @@ SUBROUTINE aed_run_model(nCols, nLevs, doSurface)
          IF ( .NOT. glm_style_zones ) &
             xdat%cc_hz(1:n_vars_ben) = xdat%cc_hz(1:n_vars_ben) + &
                                        timestep*flux_hz_rip(1:n_vars_ben)
+         !# Its water-column riparian flux (e.g. seepage discharge) goes to the nearest
+         !# wet column downhill, if the host provides one (routing table).
+         IF ( .NOT. glm_style_zones .AND. ASSOCIATED(data(col)%nearest_active) ) &
+            CALL route_dry_fluxes(col, ibot)
       ELSE
          IF ( .NOT. reinited ) CALL re_initialize(xcol, xdat, col_lev, ibot, itop)
 
@@ -1606,6 +1606,38 @@ CONTAINS
       !#===========================================================#!
 
    END SUBROUTINE map_column
+   !++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+
+   !############################################################################
+   SUBROUTINE route_dry_fluxes(col, bot)
+   !----------------------------------------------------------------------------
+   ! Dry column: add its water-column riparian fluxes (flux_rip, per unit area) to the
+   ! bottom layer of its nearest wet column (host routing table), scaled by the area ratio
+   ! (capped at 100) and spread over that layer, over the host step. As fv_aed did before
+   ! the API (dry cells routed to nearest_active). Mass only: no water is moved.
+   !----------------------------------------------------------------------------
+   !ARGUMENTS
+      INTEGER,INTENT(in) :: col, bot
+   !
+   !LOCALS
+      INTEGER  :: na, nl, kb
+      AED_REAL :: h, ratio
+      AED_REAL,PARAMETER :: max_ratio = 100.
+   !
+   !----------------------------------------------------------------------------
+   !BEGIN
+      na = NINT(data(col)%nearest_active)
+      IF ( na < 1 .OR. na > SIZE(data) .OR. na == col ) RETURN
+      IF ( .NOT. data(na)%active ) RETURN                 !# chain ended in a dry pool
+      nl = ABS(data(na)%bot_idx - data(na)%top_idx) + 1
+      kb = 1 ; IF ( data(na)%bot_idx > data(na)%top_idx ) kb = nl   !# local bottom layer
+      h = data(na)%dz(kb)
+      IF ( h <= zero_ .OR. data(na)%area(kb) <= zero_ ) RETURN
+      ratio = MIN(data(col)%area(bot) / data(na)%area(kb), max_ratio)
+      data(na)%cc(1:n_vars, kb) = data(na)%cc(1:n_vars, kb) + &
+                                  timestep * flux_rip(1:n_vars) * ratio / h
+   END SUBROUTINE route_dry_fluxes
    !++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 
 
